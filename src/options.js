@@ -1,5 +1,5 @@
-import { activeTab } from './browser.js';
-import { loadSettings, saveSettings } from './settings.js';
+import { activeTab, browserApi } from './browser.js';
+import { loadSettings, saveSettings, updateSettings } from './settings.js';
 
 const form = document.querySelector('#settings-form');
 const feedback = document.querySelector('#feedback');
@@ -188,3 +188,18 @@ try {
 }
 document.querySelector('#site-name').textContent = host || 'Open a website to set a site speed.';
 populate();
+for (const field of Object.values(keyFields)) field.addEventListener('change', async () => {
+  try {
+    const saved = await updateSettings({ shortcuts: chosenKeys() });
+    settings = { ...settings, shortcuts: saved.shortcuts };
+    show('Shortcuts saved.');
+  } catch (error) { show(error.message || 'Could not save shortcuts.', true); }
+});
+browserApi().storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.settings) return;
+  if (JSON.stringify(changes.settings.newValue?.shortcuts) === JSON.stringify(changes.settings.oldValue?.shortcuts)) return;
+  loadSettings().then(latest => {
+    settings = { ...settings, shortcuts: latest.shortcuts };
+    for (const [name, field] of Object.entries(keyFields)) field.value = settings.shortcuts[name] ?? '';
+  }).catch(() => show('Could not sync shortcuts.', true));
+});

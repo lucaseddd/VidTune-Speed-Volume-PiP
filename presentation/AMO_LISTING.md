@@ -1,51 +1,35 @@
-# Firefox Add-ons listing — VidTune 0.8.4
-
-## Português (Brasil)
-
-**Nome:** VidTune — Modular Controls
-
-**Resumo:** Controle a velocidade e o volume de vídeos, use áudio mono e PiP e escolha um layout com 2, 5 ou 10 ferramentas. Atalhos A, D e Q.
-
-**Descrição:**
-
-VidTune reúne controles de reprodução em um popup compacto.
-
-O layout padrão tem cinco ferramentas com Smart Organize ativo. A pessoa pode trocar para 2 ou 10 ferramentas e personalizar o layout a qualquer momento.
-
-- Ajuste a velocidade de 0,1× a 16× com presets, valor personalizado ou passos de 0,10×. A diminui, D aumenta e Q volta a 1×.
-- Ajuste o volume de 0% a 300% e, se quiser, use um volume diferente em cada aba. O ganho acima de 100% depende de a origem do vídeo permitir o processamento de áudio.
-- Ative áudio mono, Picture in Picture e controles opcionais para avançar ou voltar no vídeo.
-- Escolha 2, 5 ou 10 ferramentas. Smart Organize agrupa os controles relacionados.
-- Salve preferências de velocidade e volume para sites específicos.
-
-As preferências ficam no navegador. VidTune não envia dados de uso ao desenvolvedor. O acesso às páginas permite encontrar vídeos, aplicar atalhos e controlar players em quadros.
+# Firefox listing — VidTune 0.8.62
 
 ## English (US)
 
-**Name:** VidTune — Modular Controls
+Name: VidTune - Speed, Volume & PiP
 
-**Summary:** Control video speed and volume, use mono audio and PiP, and choose a layout with 2, 5 or 10 tools. A, D and Q shortcuts.
+Summary: Your video. Your pace. Change speed, boost quiet audio and use Picture-in-Picture from one compact panel.
 
-**Description:**
+Description:
+Speed from 0.1× to 16×. Volume up to 300%. Picture-in-Picture, Audio mono and shortcuts you can change with a click.
 
-VidTune puts video playback controls in a compact popup.
+Choose Basic for the essentials or Advanced for more control. Keep speed and volume in one tab, or remember your preferences for a site.
 
-The default layout uses five tools with Smart Organize enabled. Users can switch to two or ten tools and customize the layout at any time.
+No analytics. Your preferences stay in your browser. Audio boost depends on the video source allowing audio processing.
 
-- Set speed from 0.1× to 16× with presets, a custom value or 0.10× steps. A slows down, D speeds up and Q resets to 1×.
-- Set volume from 0% to 300%, with optional independent volume for each tab. Boost above 100% depends on whether the video source permits audio processing.
-- Use mono audio, Picture in Picture and optional skip back and forward controls.
-- Choose 2, 5 or 10 tools. Smart Organize groups related controls.
-- Save speed and volume preferences for specific sites.
+## Português (Brasil)
 
-Preferences remain in the browser. VidTune does not send usage data to the developer. Access to pages lets it find videos, apply shortcuts and control players in frames.
+Nome: VidTune - Speed, Volume & PiP
 
-## Screenshots
+Resumo: Seu vídeo, no seu ritmo. Ajuste a velocidade, amplifique o áudio e use Picture-in-Picture em um painel compacto.
 
-1. `01-playback-speed.png` — presets, custom speed and A/D/Q shortcuts.
-2. `02-volume-boost.png` — volume slider, mono audio and per-tab volume.
-3. `03-smart-organize.png` — ten-tool layout grouped by purpose.
+Descrição:
+Velocidade de 0,1× a 16×. Volume até 300%. Picture-in-Picture, Audio mono e atalhos que você troca com um clique.
 
-The images show actual extension UI captured with a local HTML5 video fixture. They are 1280 × 800 pixels, with short feature explanations next to the UI. They were uploaded with Portuguese and English captions. A video is optional and is omitted from this submission.
+Use Basic para o essencial ou Advanced para ter mais controle. Fixe velocidade e volume em uma aba ou salve suas preferências por site.
 
-**Previous submission:** public/listed Firefox Add-ons version 0.8.3, ID `6609313`, submitted on 22 October 2026. The user selected `Todos os direitos reservados` as the license. The listing URL is https://addons.mozilla.org/pt-BR/firefox/addon/vidtune/ . Version 0.8.4 (version ID `6624139`) updates the default layout to five tools with Smart Organize enabled and was submitted for review on 26 October 2026. The source archive was included because the release build combines project files; reviewers can reproduce the packaged extension with the included build script.
+Sem analytics. Suas preferências ficam no navegador. O amplificador depende de o vídeo permitir processamento de áudio.
+
+## New screenshots
+
+1. 01-video-control.png — Your video. Your pace. Speed, volume and Picture-in-Picture.
+2. 02-basic-advanced.png — Basic or Advanced: choose the controls you need.
+3. 03-make-it-yours.png — Custom shortcuts, tools and independent speed/volume per tab.
+
+All screenshots use real 0.8.62 UI captures. Marketing panels are 1280 × 800 PNGs. Regenerate with node scripts/presentation.js after npm run build.

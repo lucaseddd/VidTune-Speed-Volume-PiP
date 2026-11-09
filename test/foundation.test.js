@@ -49,7 +49,8 @@ test('module layouts keep unique functions and reject damaged preferences', () =
   const damaged = normalizeSettings({ moduleCount: 3, moduleLayouts: { 2: ['speed', 'speed'], 10: ['speed'] } });
   assert.equal(damaged.moduleCount, 5);
   assert.deepEqual(damaged.moduleLayouts[2], DEFAULT_SETTINGS.moduleLayouts[2]);
-  assert.deepEqual(damaged.moduleLayouts[10], MODULES);
+  assert.equal(damaged.moduleLayouts[10], undefined);
+  assert.equal(normalizeSettings({ moduleCount: 10 }).moduleCount, 5);
 });
 
 test('changing auto detection preserves the saved playback speed', async () => {

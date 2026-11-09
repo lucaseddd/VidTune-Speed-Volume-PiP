@@ -94,6 +94,21 @@ function audioFixture(video, settings = {}) {
   return { page, gain: () => nodes[0].gain.value, sourceCount: () => sourceCount };
 }
 
+test('tab-only speed restores on navigation and never changes global or site speeds', async () => {
+  const scope = { active: true, volume: 0.61, speed: 1.75 };
+  for (let navigation = 0; navigation < 2; navigation++) {
+    const video = fakeVideo();
+    const page = fixture(1.25, [video], { siteSpeeds: { 'example.com': 1.5 } }, {}, scope);
+    await page.send({ type: 'GET_STATE' });
+    assert.equal(video.playbackRate, 1.75);
+    assert.equal(video.volume, 0.61);
+    await page.send({ type: 'SET_SPEED', speed: 2 });
+    assert.equal(video.playbackRate, 2);
+    assert.equal(page.settings.speed, 1.25);
+    assert.equal(page.settings.siteSpeeds['example.com'], 1.5);
+  }
+});
+
 test('player volume and mute keep the boost without delayed jumps on media events', async () => {
   const video = fakeVideo({ playing: true });
   const { page, gain, sourceCount } = audioFixture(video);

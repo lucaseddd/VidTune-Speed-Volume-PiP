@@ -67,6 +67,7 @@
     const mediaEvents = ['play', 'playing', 'loadedmetadata', 'loadeddata', 'canplay', 'loadstart', 'ratechange'];
     let hasSiteProfile = false;
     let disabled = false;
+    let basicMode = false;
     let pipError = null;
     let pipPrompt = null;
     let speedStep = 0.1;
@@ -376,6 +377,7 @@
     }
 
     function bindIndicator(video) {
+      if (basicMode) { detachIndicator(); return; }
       if (video === indicatorVideo) return;
       detachIndicator();
       if (!video || !document.body) return;
@@ -592,6 +594,10 @@
       updateMonitoring();
       await applyToMain();
       flashIndicator();
+      if (scopedVolume) {
+        await api.runtime.sendMessage({ type: 'SAVE_SCOPED_SPEED', speed: desiredSpeed });
+        return state();
+      }
       const { settings } = await api.storage.local.get('settings');
       const siteSpeeds = settings?.siteSpeeds ?? {};
       const updated = Object.hasOwn(siteSpeeds, siteHost)
@@ -653,10 +659,12 @@
       .then(async ([{ settings }, scope]) => {
       siteHost = scope?.siteHost || siteHost;
       disabled = settings?.disabledSites?.includes(siteHost) === true;
+      basicMode = settings?.moduleCount === 2;
       hasSiteProfile = Object.hasOwn(settings?.siteSpeeds ?? {}, siteHost) ||
         Object.hasOwn(settings?.siteVolumes ?? {}, siteHost);
       desiredSpeed = normalize(settings?.siteSpeeds?.[siteHost] ?? settings?.speed);
       scopedVolume = Boolean(scope?.active);
+      if (scopedVolume && scope.speed != null) desiredSpeed = normalize(scope.speed);
       desiredVolume = normalizeVolume(scopedVolume ? scope.volume : settings?.siteVolumes?.[siteHost] ?? settings?.volume);
       desiredMono = settings?.mono === true;
       volumeManaged = scopedVolume || desiredVolume !== 1;
@@ -669,6 +677,9 @@
     api.storage.onChanged?.addListener((changes, area) => {
       if (area !== 'local' || !changes.settings) return;
       const settings = changes.settings.newValue;
+      basicMode = settings?.moduleCount === 2;
+      if (basicMode) detachIndicator();
+      else if (!disabled) bindIndicator(mainVideo());
       const wasDisabled = disabled;
       disabled = settings?.disabledSites?.includes(siteHost) === true;
       if (disabled && !wasDisabled) {
@@ -701,7 +712,7 @@
       const nextVolume = normalizeVolume(scopedVolume ? desiredVolume : settings?.siteVolumes?.[siteHost] ?? settings?.volume);
       const oldSiteSpeed = changes.settings.oldValue?.siteSpeeds?.[siteHost];
       const siteSpeedChanged = oldSiteSpeed !== settings?.siteSpeeds?.[siteHost];
-      if (!disabled && (siteSpeedChanged || wasDisabled) && nextSpeed !== desiredSpeed) {
+      if (!scopedVolume && !disabled && (siteSpeedChanged || wasDisabled) && nextSpeed !== desiredSpeed) {
         desiredSpeed = nextSpeed;
         applyToMain().catch(() => {});
       }
@@ -733,6 +744,7 @@
             const scope = await api.runtime.sendMessage({ type: 'GET_VOLUME_SCOPE' });
             scopedVolume = Boolean(scope?.active);
             const { settings } = await api.storage.local.get('settings');
+            desiredSpeed = normalize(scopedVolume && scope.speed != null ? scope.speed : settings?.siteSpeeds?.[siteHost] ?? settings?.speed);
             return setVolume(scopedVolume ? scope.volume : settings?.siteVolumes?.[siteHost] ?? settings?.volume, false);
           }
           case 'TOGGLE_PIP': return togglePip();

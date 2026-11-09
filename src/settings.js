@@ -12,7 +12,6 @@ export const MODULES = Object.freeze([
 export const DEFAULT_MODULE_LAYOUTS = Object.freeze({
   2: ['speed', 'volume'],
   5: ['speed', 'volume', 'mono', 'pip', 'tabVolume'],
-  10: [...MODULES]
 });
 export const DEFAULT_SETTINGS = Object.freeze({
   autoDetect: true, speed: 1, volume: 1, speedStep: 0.1, presets: SPEED_PRESETS,
@@ -22,7 +21,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 function moduleLayouts(value) {
-  return Object.fromEntries([2, 5, 10].map((count) => {
+  return Object.fromEntries([2, 5].map((count) => {
     const selected = value?.[count];
     return [count, Array.isArray(selected) && selected.length === count &&
       selected.every((name) => MODULES.includes(name)) && new Set(selected).size === count
@@ -86,7 +85,7 @@ export function normalizeSettings(value) {
     siteVolumes: siteVolumes(value?.siteVolumes),
     disabledSites: disabledSites(value?.disabledSites),
     mono: value?.mono === true,
-    moduleCount: [2, 5, 10].includes(value?.moduleCount) ? value.moduleCount : 5,
+    moduleCount: [2, 5].includes(value?.moduleCount) ? value.moduleCount : 5,
     moduleLayouts: moduleLayouts(value?.moduleLayouts),
     smartOrganize: value?.smartOrganize !== false
   };

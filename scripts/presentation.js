@@ -1,126 +1,54 @@
-// Produce icon sizes and presentation images from the installed extension UI.
-import { createServer } from 'node:http';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { Builder } from 'selenium-webdriver';
 import edge from 'selenium-webdriver/edge.js';
+import { createServer } from 'node:http';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-process.env.SE_CACHE_PATH = resolve('work/selenium-cache');
-process.env.SE_AVOID_STATS = 'true';
-const output = 'presentation';
-await mkdir(`${output}/screenshots`, { recursive: true });
-const svg = await readFile('icons/icon.svg', 'utf8');
-const wav = Buffer.alloc(44 + 480000, 128);
-wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
-wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28);
-wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34); wav.write('data', 36); wav.writeUInt32LE(480000, 40);
-const server = createServer((request, response) => {
-  response.writeHead(200, { 'content-type': 'text/html' });
-  response.end('<!doctype html><body tabindex="0"><video id="video" controls width="640" height="360"></video>');
-});
+const folder = resolve('presentation/screenshots');
+await mkdir(folder, { recursive: true });
+await mkdir('work', { recursive: true });
+const server = createServer((_request, response) => response.end('<!doctype html><title>Video preview</title><video controls width="640" height="360"></video>'));
 await new Promise(done => server.listen(0, '127.0.0.1', done));
-const local = `http://127.0.0.1:${server.address().port}/`;
-let driver;
-async function launch(extension = false) {
-  const options = new edge.Options().addArguments('--headless=new', '--no-first-run', '--force-device-scale-factor=2');
-  if (extension) options.addArguments(`--load-extension=${resolve('dist-chromium')}`);
-  driver = await new Builder().forBrowser('MicrosoftEdge').setEdgeOptions(options).build();
-  await driver.manage().window().setRect({ width: 1400, height: 1000 });
-  await driver.manage().setTimeouts({ script: 30000 });
-  await driver.get(local);
-}
+const options = new edge.Options().addArguments('--headless=new', '--no-first-run', `--load-extension=${resolve('dist-chromium')}`);
+options.set('ms:edgeOptions', { ...options.get('ms:edgeOptions'), enableExtensionTargets: true });
+const driver = await new Builder().forBrowser('MicrosoftEdge').setEdgeOptions(options).build();
 try {
-  await launch();
-  for (const size of [16, 32, 48, 64, 96, 128, 256]) {
-    const png = await driver.executeAsyncScript(`
-      const [svg,size,done]=arguments;const img=new Image();
-      img.onload=()=>{const c=document.createElement('canvas');c.width=c.height=size;
-        c.getContext('2d').drawImage(img,0,0,size,size);done(c.toDataURL().split(',')[1]);};
-      img.onerror=()=>done(null);img.src='data:image/svg+xml;base64,'+btoa(svg);`, svg, size);
-    if (!png) throw new Error('Icon rendering failed');
-    await writeFile(`icons/icon-${size}.png`, Buffer.from(png, 'base64'));
-  }
-  await driver.quit(); driver = null;
-  execFileSync(process.execPath, ['scripts/build.js'], { stdio: 'inherit' });
-  await launch(true);
-  await driver.executeScript('const v=document.querySelector("video");v.src=arguments[0];v.loop=true;',
-    `data:audio/wav;base64,${wav.toString('base64')}`);
-  await driver.wait(async () => await driver.executeScript('return document.querySelector("video").readyState>=2'), 5000);
-  await driver.findElement({ id: 'video' }).click();
-  await driver.executeScript('return document.querySelector("video").play()');
+  await driver.get(`http://127.0.0.1:${server.address().port}/`);
   const targets = await driver.sendAndGetDevToolsCommand('Target.getTargets', {});
-  const worker = targets.targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/src/background.js'));
-  if (!worker) throw new Error('Extension did not load');
-  const extension = `${new URL(worker.url).protocol}//${new URL(worker.url).host}`;
+  const parsed = new URL(targets.targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/src/background.js')).url);
+  const root = `${parsed.protocol}//${parsed.host}`;
   await driver.switchTo().newWindow('tab');
-  await driver.get(`${extension}/popup.html`);
-  await driver.executeAsyncScript(`const done=arguments[arguments.length-1];
-    import('./src/settings.js').then(async m=>{await chrome.storage.local.set({settings:{...m.DEFAULT_SETTINGS,
-      smartOrganize:true,moduleCount:5}});done();}).catch(e=>done(String(e)));`);
-  await driver.navigate().refresh();
-  await driver.wait(async () => await driver.executeScript('return !!document.querySelector(".smart-five")'), 5000);
-  const captures = {};
-  async function capture(name) {
-    await driver.executeScript('document.activeElement?.blur()');
-    const layout = await driver.executeScript('return {w:document.body.scrollWidth,h:document.querySelector(".shell").getBoundingClientRect().height}');
-    if (layout.w !== 360 || layout.h > 600) throw new Error(`Invalid popup size: ${JSON.stringify(layout)}`);
-    const clipped = await driver.executeScript(`return [...document.querySelectorAll('.shell button,.shell input,.popup-footer')].filter(e=>e.getClientRects().length).filter(e=>{const r=e.getBoundingClientRect();return r.bottom>580||r.right>360||r.left<0}).map(e=>e.id||e.className)`);
-    if (clipped.length) throw new Error(`Clipped controls: ${clipped.join(', ')}`);
-    captures[name] = await driver.findElement({ css: '.shell' }).takeScreenshot();
-    await writeFile(`${output}/screenshots/${name}.png`, Buffer.from(captures[name], 'base64'));
+  await driver.get(`${root}/popup.html`);
+  await driver.wait(async () => await driver.executeScript('return !!document.getElementById("speed-value")'), 5000);
+  await driver.executeAsyncScript('const done=arguments[arguments.length-1];import("./src/settings.js").then(async m=>{await chrome.storage.local.set({settings:m.DEFAULT_SETTINGS});done();});');
+  for (const [count, name] of [[2, 'basic'], [5, 'advanced']]) {
+    await driver.executeAsyncScript('const done=arguments[arguments.length-1];chrome.storage.local.get("settings").then(({settings})=>chrome.storage.local.set({settings:{...settings,moduleCount:arguments[0]}})).then(done);', count);
+    await driver.navigate().refresh();
+    await driver.wait(async () => await driver.executeScript('return document.getElementById("status").textContent === "Ready"'), 5000);
+    await writeFile(resolve(folder, `${name}.png`), Buffer.from(await driver.findElement({css:'.shell'}).takeScreenshot(), 'base64'));
   }
-  await capture('default-smart-organize');
-  await driver.findElement({ css: '.speed-presets [data-speed="1.5"]' }).click();
-  await driver.wait(async () => (await driver.findElement({ id: 'speed-value' }).getText()) === '1.5×', 5000);
-  await capture('playback-speed');
-  await driver.findElement({ css: '.volume-presets [data-volume="2"]' }).click();
-  await driver.wait(async () => (await driver.findElement({ id: 'volume-value' }).getText()) === '200%', 5000);
-  await driver.findElement({ id: 'tab-volume-only' }).click();
-  await driver.wait(async () => await driver.findElement({ id: 'tab-volume-only' }).isSelected(), 5000);
-  await capture('volume-boost');
-  for (const count of [2, 10]) {
-    await driver.executeScript('const e=document.querySelector("#tool-count");e.value=arguments[0];e.dispatchEvent(new Event("change",{bubbles:true}));', String(count));
-    await driver.wait(async () => await driver.executeScript('return document.querySelectorAll(".module-row").length===arguments[0]', count), 5000);
-    await capture(`layout-${count}`);
+  await driver.findElement({id:'customize-tools'}).click();
+  await writeFile(resolve(folder, 'choose-tools.png'), Buffer.from(await driver.findElement({css:'.shell'}).takeScreenshot(), 'base64'));
+  await driver.get(`${root}/options.html`);
+  await driver.wait(async () => await driver.executeScript('return document.querySelectorAll("#key-decrease option").length>1'), 5000);
+  for (const [selector, name] of [['section[aria-labelledby="shortcuts-title"]','shortcuts'],['section[aria-labelledby="site-title"]','site-settings']]) {
+    await writeFile(resolve(folder, `${name}.png`), Buffer.from(await driver.findElement({css:selector}).takeScreenshot(), 'base64'));
   }
-  await driver.get(`${extension}/options.html`);
-  await driver.wait(async () => (await driver.findElement({ id: 'key-decrease' }).getAttribute('value')) === 'KeyA', 5000);
-  captures.settings = await driver.findElement({ css: 'main' }).takeScreenshot();
-  await writeFile(`${output}/screenshots/settings.png`, Buffer.from(captures.settings, 'base64'));
-  await driver.get(local);
-  const slides = [
-    { name: '01-playback-speed', title: ['Playback', 'speed'], body: ['Preset or custom speed: 0.1×–16×.', 'A and D: 0.10× steps. Q: reset.'], key: 'playback-speed', label: 'VIDEO SPEED' },
-    { name: '02-volume-boost', title: ['Volume', 'and audio'], body: ['Set volume from 0% to 300%.', 'Mono and per-tab volume are optional.'], key: 'volume-boost', label: 'AUDIO CONTROLS', note: 'Boost above 100% depends on the video source.' },
-    { name: '03-smart-organize', title: ['Layouts', 'and tools'], body: ['Choose 2, 5 or 10 controls.', 'Smart Organize groups related tools.'], key: 'layout-10', label: 'CUSTOM LAYOUT' }
+  const data = async name => `data:image/png;base64,${(await readFile(resolve(folder, `${name}.png`))).toString('base64')}`;
+  const advanced = await data('advanced'), basic = await data('basic'), chooser = await data('choose-tools');
+  const scenes = [
+    ['01-video-control', `<div class="copy"><div class="eyebrow">VIDTUNE · VIDEO CONTROLS</div><h1>Your video.<br>Your pace.</h1><p>Speed up. Turn it up.<br>Keep it simple.</p><div class="chips"><span>0.1×–16× speed</span><span>Up to 300% volume</span><span>Picture-in-Picture</span></div><small>Compact controls. No analytics.</small></div><img class="hero" src="${advanced}">`],
+    ['02-basic-advanced', `<div class="top"><div class="eyebrow">ONE EXTENSION. YOUR WAY.</div><h1>Less clutter. More control.</h1></div><div class="pair"><div><h2>Basic</h2><p>Speed + volume. Fewer background visuals.</p><img src="${basic}"></div><div><h2>Advanced</h2><p>Audio mono, PiP and independent tab settings.</p><img src="${advanced}"></div></div>`],
+    ['03-make-it-yours', `<div class="copy"><div class="eyebrow">BUILT AROUND YOU</div><h1>Make every<br>tab yours.</h1><p>Keep speed and volume in one tab.<br>Change shortcut keys with a click.<br>Choose your tools. Reset anytime.</p><div class="chips"><span>Custom shortcuts</span><span>Site preferences</span></div><small>Your preferences stay in your browser.</small></div><img class="hero" src="${chooser}">`]
   ];
-  for (let index = 0; index < slides.length; index++) {
-    const png = await driver.executeAsyncScript(`
-      const [slide,shot,icon,index,done]=arguments;
-      Promise.all([shot,icon].map(src=>new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src;}))).then(([ui,logo])=>{
-        const c=document.createElement('canvas');c.width=1280;c.height=800;const g=c.getContext('2d');
-        g.fillStyle='#0C1220';g.fillRect(0,0,1280,800);
-        const glow=g.createRadialGradient(1030,330,20,1030,330,700);glow.addColorStop(0,'#192D58');glow.addColorStop(1,'#0C1220');g.fillStyle=glow;g.fillRect(0,0,1280,800);
-        g.strokeStyle='#ffffff06';g.lineWidth=1;for(let x=0;x<1280;x+=40){g.beginPath();g.moveTo(x,0);g.lineTo(x,800);g.stroke();}
-        g.drawImage(logo,64,52,48,48);g.fillStyle='#F2F6FF';g.font='700 26px Segoe UI';g.fillText('VidTune',124,86);
-        g.fillStyle='#85B6FF';g.font='700 14px Segoe UI';g.fillText(slide.label,68,216);
-        g.font='700 70px Segoe UI';slide.title.forEach((line,i)=>{g.fillStyle=i===1?'#85B6FF':'#F2F6FF';g.fillText(line,62,310+i*82);});
-        g.font='22px Segoe UI';g.fillStyle='#B5C5DE';slide.body.forEach((line,i)=>g.fillText(line,68,467+i*35));
-        const w=414,h=ui.height*w/ui.width,x=784,y=(800-h)/2;
-        g.shadowColor='#00000070';g.shadowBlur=36;g.shadowOffsetY=14;g.fillStyle='#0C1220';g.beginPath();g.roundRect(x-1,y-1,w+2,h+2,18);g.fill();g.shadowBlur=0;g.shadowOffsetY=0;
-        g.save();g.beginPath();g.roundRect(x,y,w,h,17);g.clip();g.drawImage(ui,x,y,w,h);g.restore();
-        g.strokeStyle='#385785';g.lineWidth=1;g.beginPath();g.roundRect(x,y,w,h,17);g.stroke();
-        g.fillStyle='#8298BD';g.font='13px Segoe UI';g.fillText(slide.note||'Actual VidTune interface · Smart Organize',68,728);
-        g.fillStyle='#85B6FF';g.fillRect(68,754,60,3);g.fillStyle='#7D91B0';g.font='13px Segoe UI';g.fillText('0'+(index+1)+' / 03',1140,754);
-        done(c.toDataURL().split(',')[1]);
-      }).catch(e=>done({error:String(e)}));`, slides[index], `data:image/png;base64,${captures[slides[index].key]}`,
-    `data:image/png;base64,${(await readFile('icons/icon-256.png')).toString('base64')}`, index);
-    if (typeof png !== 'string') throw new Error(JSON.stringify(png));
-    await writeFile(`${output}/${slides[index].name}.png`, Buffer.from(png, 'base64'));
+  for (const [name, body] of scenes) {
+    const html = `<!doctype html><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,Arial,sans-serif;color:#eff5ff;background:#0b1120}#stage{width:1280px;height:800px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 85% 25%,#23427080,transparent 60%),#0b1120;padding:68px 80px}.eyebrow{font-size:15px;letter-spacing:3px;font-weight:600;color:#91baff}h1{font-size:64px;font-weight:650;letter-spacing:-2.8px;line-height:1.06;margin:24px 0}p{font-size:23px;line-height:1.55;color:#b9c9df}.copy{position:absolute;left:80px;top:120px;max-width:610px}.chips{display:flex;flex-wrap:wrap;gap:10px;max-width:510px;margin-top:26px}.chips span{padding:10px 15px;border:1px solid #334e72;border-radius:24px;font-size:16px;color:#c9ddfb}small{display:block;font-size:17px;color:#8ca1bf;margin-top:30px}.hero{position:absolute;right:105px;top:155px;width:384px;border:1px solid #31445f;border-radius:20px;box-shadow:0 30px 80px #0006}.top h1{font-size:48px;margin:16px 0}.pair{display:flex;gap:85px;justify-content:center;margin-top:25px}.pair>div{width:420px;text-align:center}.pair h2{font-size:24px;margin:0 0 4px}.pair p{font-size:16px;margin:0 0 18px}.pair img{width:320px;border:1px solid #31445f;border-radius:16px;box-shadow:0 20px 50px #0004}</style><div id="stage">${body}</div>`;
+    const file = resolve(`work/${name}.html`);
+    await writeFile(file, html);
+    await driver.get(pathToFileURL(file).href);
+    await driver.sendAndGetDevToolsCommand('Emulation.setDeviceMetricsOverride', {width:1280,height:800,deviceScaleFactor:1,mobile:false});
+    await writeFile(resolve('presentation',`${name}.png`), Buffer.from(await driver.findElement({css:'#stage'}).takeScreenshot(), 'base64'));
   }
-  console.log('Created icons, six original UI screenshots and three 1280x800 presentation images.');
-} finally {
-  if (driver) await driver.quit();
-  await new Promise(done => server.close(done));
-}
+  console.log('Captured current UI and three 1280 × 800 presentation images.');
+} finally { await driver.quit(); await new Promise(done => server.close(done)); }

@@ -1,17 +1,18 @@
 import { activeTab, browserApi, sendToVideo } from './browser.js';
 import { summarizeVideos } from './detection.js';
-import { loadSettings, MODULES, updateSettings } from './settings.js';
+import { DEFAULT_MODULE_LAYOUTS, loadSettings, MODULES, updateSettings } from './settings.js';
 import { formatSpeed, normalizeSpeed } from './speed.js';
 import { formatVolume, positionToVolume, volumeToPosition } from './volume.js';
 
 const labels = {
-  speed: 'Playback Speed', volume: 'Volume Boost', mono: 'Mono Audio', pip: 'Picture-in-Picture',
+  speed: 'Playback Speed', volume: 'Volume Boost', mono: 'Audio mono', pip: 'Picture-in-Picture',
   presets: 'Speed Presets', customSpeed: 'Custom Speed', resetSpeed: 'Reset Speed',
   seekBackward: 'Skip Back', seekForward: 'Skip Ahead', tabVolume: 'Tab Volume'
 };
 const list = document.querySelector('#module-list');
 const countPicker = document.querySelector('#tool-count');
 const customizeButton = document.querySelector('#customize-tools');
+const workspaceToolbar = document.querySelector('.workspace-toolbar');
 const choices = document.querySelector('#tool-choices');
 const status = document.querySelector('#status');
 const smartToggle = document.querySelector('#smart-organize');
@@ -20,6 +21,7 @@ const shortcutLegend = document.querySelector('.footnote');
 const footer = document.querySelector('.popup-footer');
 const volumePresets = document.querySelector('#volume-presets');
 const volumePresetsSlot = document.querySelector('#volume-presets-slot');
+const quickSpeedPresets = [0.25, 0.5, 1, 1.5, 2];
 versionLabel.textContent = `v${browserApi().runtime.getManifest().version}`;
 let settings;
 let currentTab;
@@ -28,6 +30,39 @@ let scopeActive = false;
 let volumeTimer;
 let volumeRequests = Promise.resolve();
 let layoutWrites = Promise.resolve();
+let editingShortcut = null;
+
+function renderShortcuts() {
+  for (const button of shortcutLegend.querySelectorAll('[data-shortcut]')) {
+    const action = button.dataset.shortcut;
+    button.querySelector('kbd').textContent = editingShortcut === action ? '…' : settings.shortcuts[action]?.replace(/^Key/, '') || '—';
+    button.setAttribute('aria-pressed', String(editingShortcut === action));
+  }
+}
+
+async function saveShortcuts(shortcuts) {
+  try {
+    settings = await updateSettings({ shortcuts });
+    editingShortcut = null;
+    renderShortcuts();
+    setStatus('Shortcuts saved', 'ready');
+  } catch { setStatus('Could not save shortcuts', 'error'); }
+}
+
+shortcutLegend.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-shortcut]');
+  if (button) {
+    editingShortcut = button.dataset.shortcut;
+    renderShortcuts();
+    setStatus('Press A–Z · Esc to cancel');
+  } else if (event.target.closest('.reset-shortcuts')) {
+    const shortcuts = { ...settings.shortcuts };
+    for (const action of Object.keys(shortcuts)) {
+      if (!['decrease', 'increase', 'reset'].includes(action) && ['KeyA', 'KeyD', 'KeyQ'].includes(shortcuts[action])) shortcuts[action] = null;
+    }
+    saveShortcuts({ ...shortcuts, decrease: 'KeyA', increase: 'KeyD', reset: 'KeyQ' });
+  }
+});
 
 function setStatus(message, kind = '') {
   status.textContent = message;
@@ -35,6 +70,8 @@ function setStatus(message, kind = '') {
 }
 
 function renderModules() {
+  editingShortcut = null;
+  renderShortcuts();
   // Move these shared elements out before replacing the previous tool layout.
   footer.append(shortcutLegend);
   volumePresetsSlot.append(volumePresets);
@@ -42,8 +79,9 @@ function renderModules() {
   document.documentElement.dataset.toolCount = String(count);
   countPicker.value = String(count);
   smartToggle.checked = settings.smartOrganize;
-  list.className = settings.smartOrganize ? `module-list smart smart-${({ 2: 'two', 5: 'five', 10: 'ten' })[count]}` : 'module-list';
+  list.className = settings.smartOrganize ? `module-list smart smart-${count === 2 ? 'two' : 'five'}` : 'module-list';
   customizeButton.hidden = !settings.smartOrganize;
+  workspaceToolbar.hidden = !settings.smartOrganize;
   if (!settings.smartOrganize) {
     choices.hidden = true;
     customizeButton.setAttribute('aria-expanded', 'false');
@@ -51,7 +89,7 @@ function renderModules() {
   list.hidden = settings.smartOrganize && !choices.hidden;
   const selected = settings.moduleLayouts[count].map((name, index) => ({ name, index }));
   if (settings.smartOrganize) {
-    const preferred = ['speed', 'mono', 'pip', 'volume', 'tabVolume', 'presets', 'customSpeed',
+    const preferred = ['speed', 'volume', 'mono', 'pip', 'tabVolume', 'presets', 'customSpeed',
       'resetSpeed', 'seekBackward', 'seekForward'];
     selected.sort((a, b) => preferred.indexOf(a.name) - preferred.indexOf(b.name));
   }
@@ -91,6 +129,13 @@ function renderModules() {
     label.append(select);
     return label;
   }));
+  const resetTools = document.createElement('button');
+  resetTools.type = 'button'; resetTools.className = 'reset-tools';
+  resetTools.textContent = 'Reset to recommended';
+  resetTools.addEventListener('click', () => saveLayout({
+    moduleLayouts: { ...settings.moduleLayouts, [count]: [...DEFAULT_MODULE_LAYOUTS[count]] }
+  }));
+  choices.append(resetTools);
   const preset = document.querySelector('#preset-choice');
   if (preset) {
     preset.append(new Option('Choose speed', ''));
@@ -113,6 +158,8 @@ function organizeTools() {
     section.setAttribute('aria-label', label);
     return section;
   };
+  let speedSection;
+  let audioSection;
   const speed = rows.get('speed');
   if (speed) {
     const heading = document.createElement('div');
@@ -121,16 +168,25 @@ function organizeTools() {
     speed.prepend(heading);
     const section = group('speed-workspace', 'Playback speed');
     section.append(speed, document.querySelector('#smart-speed-extra').content.cloneNode(true));
-    for (const value of settings.presets) {
+    for (const value of quickSpeedPresets) {
       const button = document.createElement('button');
       button.type = 'button'; button.dataset.speed = String(value); button.textContent = formatSpeed(value);
       section.querySelector('.speed-presets').append(button);
     }
+    const customButton = document.createElement('button');
+    customButton.type = 'button'; customButton.dataset.action = 'OPEN_CUSTOM_SPEED'; customButton.textContent = 'Custom';
+    const customInput = document.createElement('input');
+    customInput.id = 'smart-custom-speed'; customInput.type = 'number'; customInput.min = '0.1';
+    customInput.max = '16'; customInput.step = '0.1'; customInput.inputMode = 'decimal';
+    customInput.setAttribute('aria-label', 'Custom playback speed from 0.1× to 16×');
+    customInput.title = 'Enter to apply · Esc to cancel';
+    customInput.hidden = true;
+    section.querySelector('.speed-presets').append(customButton, customInput);
     for (const name of ['presets', 'customSpeed', 'resetSpeed']) {
       const row = rows.get(name);
       if (row) { row.hidden = true; section.append(row); rows.delete(name); }
     }
-    list.append(section); rows.delete('speed');
+    speedSection = section; rows.delete('speed');
   }
   const quick = group('quick-actions', 'Video actions');
   for (const name of ['seekBackward', 'seekForward', 'pip']) {
@@ -139,13 +195,13 @@ function organizeTools() {
   if (quick.children.length === 1 && quick.firstElementChild.dataset.module === 'pip' && speed) {
     const pip = quick.firstElementChild;
     pip.classList.add('pip-inline');
-    list.querySelector('.speed-workspace').append(pip);
-  } else if (quick.children.length) list.append(quick);
+    speedSection.querySelector('.section-heading').append(pip);
+  }
   const volume = rows.get('volume');
   if (volume) {
     const heading = document.createElement('div');
     heading.className = 'section-heading';
-    heading.append(volume.querySelector('.module-title'), volumePresets);
+    heading.append(volume.querySelector('.module-title'), volumePresets, volume.querySelector('#volume-value'));
     volume.prepend(heading);
     const section = group('audio-workspace', 'Volume and audio');
     section.append(volume, document.querySelector('#smart-volume-extra').content.cloneNode(true));
@@ -154,8 +210,14 @@ function organizeTools() {
       if (rows.has(name)) { switches.append(rows.get(name)); rows.delete(name); }
     }
     if (switches.children.length) section.append(switches);
-    list.append(section); rows.delete('volume');
+    audioSection = section; rows.delete('volume');
   }
+  if (audioSection && speedSection) list.append(speedSection, audioSection);
+  else {
+    if (speedSection) list.append(speedSection);
+    if (audioSection) list.append(audioSection);
+  }
+  if (quick.children.length) list.append(quick);
   for (const row of rows.values()) list.append(row);
   for (const [action, symbol] of [['SEEK_BACKWARD', '↶'], ['SEEK_FORWARD', '↷']]) {
     const button = quick.querySelector(`[data-action="${action}"]`);
@@ -177,10 +239,9 @@ function renderVideoState(state) {
   if (speedValue) speedValue.textContent = formatSpeed(speed);
   const manual = document.querySelector('#manual-value');
   if (manual && document.activeElement !== manual) manual.value = String(speed);
-  const smartManual = document.querySelector('#smart-manual');
-  if (smartManual && document.activeElement !== smartManual) smartManual.value = String(speed);
-  for (const input of [manual, smartManual]) if (input) input.step = String(settings.speedStep);
+  for (const input of [manual, document.querySelector('#smart-custom-speed')]) if (input) input.step = String(settings.speedStep);
   for (const button of list.querySelectorAll('[data-speed]')) button.setAttribute('aria-pressed', String(Number(button.dataset.speed) === speed));
+  list.querySelector('[data-action="OPEN_CUSTOM_SPEED"]')?.setAttribute('aria-pressed', String(!quickSpeedPresets.includes(speed)));
   for (const button of volumePresets.querySelectorAll('[data-volume]')) {
     button.setAttribute('aria-pressed', String(Number(button.dataset.volume) === state.volume));
     button.disabled = Boolean(state.disabled);
@@ -257,7 +318,7 @@ list.addEventListener('change', async (event) => {
       await volumeRequests;
       const result = await browserApi().runtime.sendMessage({
         type: 'SET_VOLUME_SCOPE', tabId: currentTab.id, enabled: target.checked,
-        volume: videoState.volume
+        volume: videoState.volume, speed: videoState.speed
       });
       if (result.error) throw new Error(result.error);
       scopeActive = result.active;
@@ -282,8 +343,18 @@ list.addEventListener('click', (event) => {
   if (speedPreset) { send({ type: 'SET_SPEED', speed: Number(speedPreset.dataset.speed) }); return; }
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (!action) return;
-  if (action === 'CUSTOM_SPEED' || action === 'SMART_SPEED') {
-    const input = document.querySelector(action === 'SMART_SPEED' ? '#smart-manual' : '#manual-value');
+  if (action === 'OPEN_CUSTOM_SPEED') {
+    const button = event.target.closest('[data-action="OPEN_CUSTOM_SPEED"]');
+    const input = list.querySelector('#smart-custom-speed');
+    input.value = String(videoState.speed);
+    button.hidden = true;
+    input.hidden = false;
+    input.focus();
+    input.select();
+    return;
+  }
+  if (action === 'CUSTOM_SPEED') {
+    const input = document.querySelector('#manual-value');
     const speed = Number(input.value);
     if (!input.value.trim() || !Number.isFinite(speed) || speed < 0.1 || speed > 16) {
       setStatus('Enter 0.1×–16×', 'error');
@@ -291,6 +362,28 @@ list.addEventListener('click', (event) => {
     }
     send({ type: 'SET_SPEED', speed });
   } else send({ type: action });
+});
+
+list.addEventListener('keydown', (event) => {
+  if (event.target.id !== 'smart-custom-speed') return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.target.hidden = true;
+    list.querySelector('[data-action="OPEN_CUSTOM_SPEED"]').hidden = false;
+    return;
+  }
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const input = event.target;
+  const speed = Number(input.value);
+  if (!input.value.trim() || !Number.isFinite(speed) || speed < 0.1 || speed > 16) {
+    setStatus('Enter 0.1×–16×', 'error');
+    input.focus();
+    return;
+  }
+  input.hidden = true;
+  list.querySelector('[data-action="OPEN_CUSTOM_SPEED"]').hidden = false;
+  send({ type: 'SET_SPEED', speed });
 });
 
 volumePresets.addEventListener('click', (event) => {
@@ -307,12 +400,33 @@ customizeButton.addEventListener('click', () => {
   updateCompactVisibility();
 });
 document.querySelector('#open-settings').addEventListener('click', () => browserApi().runtime.openOptionsPage());
+browserApi().storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.settings || !settings) return;
+  if (JSON.stringify(changes.settings.newValue?.shortcuts) === JSON.stringify(changes.settings.oldValue?.shortcuts)) return;
+  loadSettings().then(latest => {
+    settings = { ...settings, shortcuts: latest.shortcuts };
+    renderShortcuts();
+  }).catch(() => setStatus('Could not sync shortcuts', 'error'));
+});
 
 document.addEventListener('keydown', (event) => {
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-  if (event.code === 'Enter' && event.target.id === 'smart-manual') {
-    event.preventDefault(); list.querySelector('[data-action="SMART_SPEED"]').click(); return;
+  if (editingShortcut) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.code === 'Escape') {
+      editingShortcut = null; renderShortcuts(); setStatus('Shortcut change canceled'); return;
+    }
+    if (event.repeat) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !/^Key[A-Z]$/.test(event.code)) {
+      setStatus('Choose a letter A–Z without modifiers', 'error'); return;
+    }
+    if (Object.entries(settings.shortcuts).some(([action, code]) => action !== editingShortcut && code === event.code)) {
+      setStatus('Key already used · choose another', 'error'); return;
+    }
+    saveShortcuts({ ...settings.shortcuts, [editingShortcut]: event.code });
+    return;
   }
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
   if (event.composedPath().some((element) => element?.closest?.('input:not([type="range"]):not([type="radio"]):not([type="checkbox"]), textarea, [contenteditable], [role="textbox"]'))) return;
   const shortcut = Object.keys(settings?.shortcuts ?? {}).find((key) => settings.shortcuts[key] === event.code);
   if (!shortcut || (shortcut.startsWith('seek') && !settings.seekEnabled)) return;

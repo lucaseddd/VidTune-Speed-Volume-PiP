@@ -7,8 +7,9 @@ let scopeWrites = Promise.resolve();
 
 async function volumeScopes() {
   const { volumeScopes, volumeScope } = await api.storage.session.get(['volumeScopes', 'volumeScope']);
-  if (volumeScopes) return volumeScopes;
-  return volumeScope?.tabId ? { [volumeScope.tabId]: volumeScope.volume } : {};
+  if (volumeScopes) return Object.fromEntries(Object.entries(volumeScopes).map(([tabId, scope]) =>
+    [tabId, typeof scope === 'number' ? { volume: scope } : scope]));
+  return volumeScope?.tabId ? { [volumeScope.tabId]: { volume: volumeScope.volume } } : {};
 }
 
 function changeScopes(update) {
@@ -33,25 +34,27 @@ api.runtime.onMessage.addListener((message, sender, respond) => {
       const tabId = message.tabId ?? sender.tab?.id;
       let siteHost = null;
       try { siteHost = new URL(sender.tab?.url).hostname.toLowerCase(); } catch { /* No web tab. */ }
-      respond({ active: Object.hasOwn(scopes, tabId), volume: scopes[tabId] ?? 1, siteHost });
+      respond({ active: Object.hasOwn(scopes, tabId), volume: scopes[tabId]?.volume ?? 1, speed: scopes[tabId]?.speed, siteHost });
     }, (error) => respond({ error: String(error) }));
     return true;
   }
   if (message?.type === 'SET_VOLUME_SCOPE' && Number.isInteger(message.tabId)) {
     changeScopes((scopes) => {
       if (message.enabled) {
-        scopes[message.tabId] = Math.max(0, Math.min(3, Number(message.volume) || 0));
+        scopes[message.tabId] = { volume: Math.max(0, Math.min(3, Number(message.volume) || 0)),
+          speed: Math.max(0.1, Math.min(16, Number(message.speed) || 1)) };
       } else {
         delete scopes[message.tabId];
       }
-      return { active: Object.hasOwn(scopes, message.tabId), volume: scopes[message.tabId] ?? 1 };
+      return { active: Object.hasOwn(scopes, message.tabId), ...scopes[message.tabId] };
     }).then(respond, (error) => respond({ error: String(error) }));
     return true;
   }
-  if (message?.type === 'SAVE_SCOPED_VOLUME' && sender.tab?.id) {
+  if (['SAVE_SCOPED_VOLUME', 'SAVE_SCOPED_SPEED'].includes(message?.type) && sender.tab?.id) {
     changeScopes((scopes) => {
       if (!Object.hasOwn(scopes, sender.tab.id)) return { active: false };
-      scopes[sender.tab.id] = Math.max(0, Math.min(3, Number(message.volume) || 0));
+      if (message.type === 'SAVE_SCOPED_SPEED') scopes[sender.tab.id].speed = Math.max(0.1, Math.min(16, Number(message.speed) || 1));
+      else scopes[sender.tab.id].volume = Math.max(0, Math.min(3, Number(message.volume) || 0));
       return { active: true };
     }).then(respond, (error) => respond({ error: String(error) }));
     return true;

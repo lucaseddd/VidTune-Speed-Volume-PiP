@@ -16,27 +16,27 @@
     </header>
     <div id="volume-presets-slot" hidden><div id="volume-presets" class="volume-presets compact-volume-presets" aria-label="Quick volume levels" hidden><button type="button" data-volume="0">Mute</button><button type="button" data-volume="1">100%</button><button type="button" data-volume="2">200%</button><button type="button" data-volume="3">300%</button></div></div>
     <div class="layout-bar">
-      <label class="layout-picker" for="tool-count"><span>Layout</span><select id="tool-count" aria-label="Number of tools"><option value="2">2 tools</option><option value="5">5 tools</option><option value="10">10 tools</option></select></label>
+      <label class="layout-picker" for="tool-count"><span>Layout</span><select id="tool-count" aria-label="Control layout"><option value="2">Basic</option><option value="5">Advanced</option></select></label>
       <label class="smart-toggle" for="smart-organize"><input id="smart-organize" type="checkbox"><span>Smart Organize</span></label>
     </div>
-    <div class="workspace-toolbar"><span>Your controls</span><button id="customize-tools" type="button" aria-expanded="false" aria-controls="tool-choices">Choose tools <span aria-hidden="true">⌄</span></button></div>
+    <div class="workspace-toolbar"><button id="customize-tools" type="button" aria-expanded="false" aria-controls="tool-choices">Choose tools <span aria-hidden="true">⌄</span></button></div>
     <div id="tool-choices" hidden></div>
     <div id="module-list" class="module-list" aria-label="Selected tools"></div>
-    <footer class="popup-footer"><span class="footnote"><span><kbd>A</kbd> Slower</span><span><kbd>D</kbd> Faster</span><span><kbd>Q</kbd> Reset</span></span></footer>
+    <footer class="popup-footer"><span class="footnote"><button type="button" data-shortcut="decrease" aria-label="Change slower shortcut"><kbd>A</kbd> Slower</button><button type="button" data-shortcut="increase" aria-label="Change faster shortcut"><kbd>D</kbd> Faster</button><button type="button" data-shortcut="reset" aria-label="Change reset speed shortcut"><kbd>Q</kbd> Reset</button><button type="button" class="reset-shortcuts" aria-label="Restore A, D and Q shortcuts" title="Restore A / D / Q"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1.6 7M4 4v6h6"/></svg></button></span></footer>
     <span id="site" class="visually-hidden">—</span>
     <span id="video-summary" class="visually-hidden" role="status">Looking for videos…</span>
   </main>
   <template id="module-speed"><button id="decrease" type="button" data-action="DECREASE" aria-label="Decrease speed">−</button><output id="speed-value">1×</output><button id="increase" type="button" data-action="INCREASE" aria-label="Increase speed">+</button></template>
   <template id="module-volume"><input id="volume-slider" type="range" min="0" max="200" step="1" value="100" aria-label="Video volume"><output id="volume-value">100%</output></template>
-  <template id="module-mono"><label class="toggle"><input id="mono-toggle" type="checkbox"> Mono</label></template>
+  <template id="module-mono"><label class="toggle"><input id="mono-toggle" type="checkbox" role="switch"><span>Audio mono</span></label></template>
   <template id="module-pip"><button id="toggle-pip" type="button" data-action="TOGGLE_PIP" aria-label="Open Picture in Picture" title="Picture in Picture"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="15" rx="3"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" stroke="none"/></svg> PiP</button></template>
   <template id="module-presets"><select id="preset-choice" aria-label="Choose speed preset"></select></template>
   <template id="module-customSpeed"><input id="manual-value" type="number" min="0.1" max="16" step="0.1" inputmode="decimal" aria-label="Custom speed"><button type="button" data-action="CUSTOM_SPEED">Apply</button></template>
   <template id="module-resetSpeed"><button id="reset" type="button" data-action="RESET" class="wide-control">Reset to 1×</button></template>
   <template id="module-seekBackward"><button type="button" data-action="SEEK_BACKWARD" class="wide-control">↶ Skip back</button></template>
   <template id="module-seekForward"><button type="button" data-action="SEEK_FORWARD" class="wide-control">Skip forward ↷</button></template>
-  <template id="module-tabVolume"><label class="toggle"><input id="tab-volume-only" type="checkbox"> This tab only</label></template>
-  <template id="smart-speed-extra"><div class="speed-presets" aria-label="Quick playback speeds"></div><div class="speed-details"><label>Custom <input id="smart-manual" type="number" min="0.1" max="16" step="0.1" aria-label="Custom playback speed"></label><button type="button" data-action="SMART_SPEED">Apply</button><button type="button" data-action="RESET" class="reset-link">Reset 1×</button></div></template>
+  <template id="module-tabVolume"><label class="toggle" title="Keep speed and volume only in this tab"><input id="tab-volume-only" type="checkbox" role="switch"><span>This tab only</span></label></template>
+  <template id="smart-speed-extra"><div class="speed-presets" aria-label="Quick playback speeds"></div></template>
   <template id="smart-volume-extra"><div class="volume-marks" aria-hidden="true"><span>0%</span><span>100%</span><span>300%</span></div></template>
   <script type="module" src="src/popup.js"></script>
 </body>

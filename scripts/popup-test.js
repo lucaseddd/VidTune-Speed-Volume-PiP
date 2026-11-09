@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Builder } from 'selenium-webdriver';
+import { Builder, Key } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import edge from 'selenium-webdriver/edge.js';
 import { installTestAddons } from './firefox-addons.js';
@@ -58,13 +58,54 @@ try {
     const legend=document.querySelector('.footnote');
     const presets=document.getElementById('volume-presets');
     const volumeOutput=document.getElementById('volume-value').getBoundingClientRect();
+    const presetBox=presets.getBoundingClientRect();
+    const slider=document.getElementById('volume-slider').getBoundingClientRect();
     return {
       versionBesideName:version.left>=name.right&&version.top<name.bottom&&version.bottom>name.top,
       shortcutsBesideSpeed:!!legend.closest('.speed-workspace .section-heading'),
       presetsBesideVolume:!!presets.closest('.audio-workspace .section-heading'),
-      presetsBeforeOutput:presets.getBoundingClientRect().right<=volumeOutput.left
+      presetsBeforeOutput:presetBox.right<=volumeOutput.left,
+      presetsCentered:Math.abs((presetBox.left+presetBox.right-slider.left-slider.right)/2)<1,
+      presetsAlignedWithOutput:Math.abs((presetBox.top+presetBox.bottom-volumeOutput.top-volumeOutput.bottom)/2)<1
     };`);
-  assert.deepEqual(positions, { versionBesideName: true, shortcutsBesideSpeed: true, presetsBesideVolume: true, presetsBeforeOutput: true });
+  assert.deepEqual(positions, { versionBesideName: true, shortcutsBesideSpeed: true, presetsBesideVolume: true, presetsBeforeOutput: true, presetsCentered: true, presetsAlignedWithOutput: true });
+  const slowerShortcut = await driver.findElement({css:'[data-shortcut="decrease"]'});
+  await driver.switchTo().newWindow('tab');
+  const optionsWindow = await driver.getWindowHandle();
+  await driver.get(`${extensionUrl}/options.html`);
+  await driver.wait(async()=>await driver.executeScript('return !!document.querySelector("#key-decrease option[value=KeyX]")'), 5000);
+  await driver.executeScript('const field=document.getElementById("key-decrease");field.value="KeyX";field.dispatchEvent(new Event("change",{bubbles:true}));');
+  await driver.switchTo().window(popup);
+  await driver.wait(async()=>await slowerShortcut.getAttribute('textContent') === 'X Slower', 5000);
+  await slowerShortcut.click();
+  await slowerShortcut.sendKeys('z');
+  await driver.wait(async()=>await slowerShortcut.getAttribute('textContent') === 'Z Slower', 5000);
+  await driver.switchTo().window(optionsWindow);
+  await driver.wait(async()=>await driver.executeScript('return document.getElementById("key-decrease").value === "KeyZ"'), 5000);
+  await driver.close();
+  await driver.switchTo().window(popup);
+  const fasterShortcut = await driver.findElement({css:'[data-shortcut="increase"]'});
+  await fasterShortcut.click();
+  await fasterShortcut.sendKeys('z');
+  assert.equal(await fasterShortcut.getAttribute('aria-pressed'), 'true', 'A duplicate must not replace another shortcut');
+  await fasterShortcut.sendKeys(Key.ESCAPE);
+  await driver.findElement({css:'.reset-shortcuts'}).click();
+  await driver.wait(async()=>await slowerShortcut.getAttribute('textContent') === 'A Slower', 5000);
+  assert.deepEqual(await driver.executeAsyncScript('const done=arguments[arguments.length-1];(globalThis.browser??globalThis.chrome).storage.local.get("settings").then(({settings})=>done([settings.shortcuts.decrease,settings.shortcuts.increase,settings.shortcuts.reset]));'), ['KeyA','KeyD','KeyQ']);
+  assert.equal(await driver.executeScript('return document.querySelector(".speed-workspace").getBoundingClientRect().top < document.querySelector(".audio-workspace").getBoundingClientRect().top'), true);
+  assert.deepEqual(await driver.executeScript('return [...document.querySelectorAll("#tool-count option")].map(option=>option.textContent)'), ['Basic', 'Advanced']);
+  assert.deepEqual(await driver.executeScript('return [...document.querySelectorAll(".speed-presets [data-speed]")].map(button=>Number(button.dataset.speed))'), [0.25, 0.5, 1, 1.5, 2]);
+  await driver.findElement({css:'[data-action="OPEN_CUSTOM_SPEED"]'}).click();
+  const customInput = await driver.findElement({id:'smart-custom-speed'});
+  await customInput.clear();
+  await customInput.sendKeys('17', Key.ENTER);
+  assert.equal(await customInput.isDisplayed(), true, 'Invalid custom speeds must remain editable');
+  await customInput.clear();
+  await customInput.sendKeys('1.25', Key.ENTER);
+  await driver.wait(async()=>await driver.executeScript('return document.getElementById("speed-value").textContent === "1.25×"'), 5000);
+  await driver.findElement({css:'[data-action="OPEN_CUSTOM_SPEED"]'}).click();
+  await customInput.sendKeys(Key.ESCAPE);
+  assert.equal(await customInput.isDisplayed(), false);
 
   async function assertLayout(count, smart, chooser = false) {
     const result = await driver.executeScript(`
@@ -92,12 +133,15 @@ try {
   }
 
   for (const smart of [true, false]) {
-    for (const count of [2, 5, 10]) {
+    for (const count of [2, 5]) {
       await driver.executeAsyncScript(`const done=arguments[arguments.length-1];const api=globalThis.browser??globalThis.chrome;
         api.storage.local.get('settings').then(({settings})=>api.storage.local.set({settings:{...settings,moduleCount:arguments[0],smartOrganize:arguments[1]}})).then(()=>done(true));`, count, smart);
       await driver.navigate().refresh();
       await driver.wait(async () => await driver.executeScript('return document.querySelectorAll(".module-row").length === arguments[0]', count), 5000);
       await assertLayout(count, smart);
+      await driver.switchTo().window(source);
+      await driver.wait(async()=>await driver.executeScript('return !!document.getElementById("vidtune-speed-indicator") === arguments[0]', count === 5), 5000, 'Basic must release the video overlay; Advanced restores it');
+      await driver.switchTo().window(popup);
       if (smart) {
         await driver.findElement({ id: 'customize-tools' }).click();
         await assertLayout(count, smart, true);
@@ -135,20 +179,26 @@ try {
   await driver.findElement({ id: 'customize-tools' }).click();
   await assertLayout(2, true);
   assert.ok((await driver.executeScript('return document.querySelector(".shell").offsetHeight')) < largeHeight - 50, 'Removing a large tool must reclaim the empty space');
+  await driver.findElement({ id: 'customize-tools' }).click();
+  await driver.findElement({ css: '.reset-tools' }).click();
+  await driver.wait(async()=>await driver.executeScript('return !!document.getElementById("speed-value") && !document.getElementById("mono-toggle")'), 5000);
+  assert.deepEqual(await driver.executeScript('return [...document.querySelectorAll(".choice-select")].map(select=>select.value)'), ['speed', 'volume']);
+  await driver.findElement({ id: 'customize-tools' }).click();
   assert.equal(await driver.executeScript('return document.querySelectorAll("#pin-controls").length'), 0);
 
   const targetId = await driver.executeAsyncScript(`const done=arguments[arguments.length-1];import('./src/browser.js').then(m=>m.activeTab()).then(tab=>done(tab.id));`);
   for (const volume of [0.61, 1]) {
     const scoped = await driver.executeAsyncScript(`const done=arguments[arguments.length-1],tabId=arguments[0],volume=arguments[1];const api=globalThis.browser??globalThis.chrome;
-      (async()=>{await api.runtime.sendMessage({type:'SET_VOLUME_SCOPE',tabId,enabled:true,volume});const {sendToVideo}=await import('./src/browser.js');return sendToVideo(tabId,{type:'SYNC_VOLUME_SCOPE'});})().then(done,e=>done({error:String(e)}));`, targetId, volume);
+      (async()=>{await api.runtime.sendMessage({type:'SET_VOLUME_SCOPE',tabId,enabled:true,volume,speed:1.75});const {sendToVideo}=await import('./src/browser.js');await sendToVideo(tabId,{type:'SYNC_VOLUME_SCOPE'});return sendToVideo(tabId,{type:'SET_SPEED',speed:2.25});})().then(done,e=>done({error:String(e)}));`, targetId, volume);
     assert.equal(scoped.volume, volume);
     await driver.switchTo().window(source);
     await driver.get(`http://127.0.0.1:${server.address().port}/next?volume=${volume}`);
-    await driver.wait(async () => await driver.executeScript('return window.siteInitialized === true && Math.abs(document.querySelector("video").volume-arguments[0])<0.0001', volume), 5000, 'The tab volume must survive a new video and the player restoring its own default');
+    await driver.wait(async () => await driver.executeScript('return window.siteInitialized === true && Math.abs(document.querySelector("video").volume-arguments[0])<0.0001 && document.querySelector("video").playbackRate === 2.25', volume), 5000, 'The tab speed and volume must survive a new video and the player restoring its own default');
     await driver.switchTo().window(popup);
     const scope = await driver.executeAsyncScript(`const done=arguments[arguments.length-1];(globalThis.browser??globalThis.chrome).runtime.sendMessage({type:'GET_VOLUME_SCOPE',tabId:arguments[0]}).then(done);`, targetId);
     assert.equal(scope.active, true);
     assert.equal(scope.volume, volume);
+    assert.equal(scope.speed, 2.25);
   }
   console.log(`${name} popup passed: automatic version, all layouts and choosers fit, larger tools expand the panel, smaller tools reclaim space, no Pin, and tab-only volume survives video navigation including 100%.`);
 } catch (error) {
