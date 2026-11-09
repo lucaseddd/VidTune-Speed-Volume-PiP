@@ -29,7 +29,7 @@ api.tabs.onRemoved.addListener((tabId) => {
 
 api.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'GET_VOLUME_SCOPE') {
-    volumeScopes().then((scopes) => {
+    scopeWrites.then(volumeScopes).then((scopes) => {
       const tabId = message.tabId ?? sender.tab?.id;
       let siteHost = null;
       try { siteHost = new URL(sender.tab?.url).hostname.toLowerCase(); } catch { /* No web tab. */ }

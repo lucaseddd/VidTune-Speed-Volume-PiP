@@ -64,7 +64,7 @@
     const failedSources = new WeakMap();
     const rateCorrections = new WeakMap();
     const shadowRoots = new Set();
-    const mediaEvents = ['play', 'loadedmetadata', 'loadstart', 'ratechange'];
+    const mediaEvents = ['play', 'playing', 'loadedmetadata', 'loadeddata', 'canplay', 'loadstart', 'ratechange'];
     let hasSiteProfile = false;
     let disabled = false;
     let pipError = null;
@@ -290,7 +290,9 @@
         route.gain.connect(route.compressor);
         route.mode = 'boost';
       }
-      if (video.volume !== 1) video.volume = 1;
+      // Initialize the player level only when entering boost. Later player adjustments
+      // scale the amplified audio and must survive play, metadata and speed updates.
+      if (activeBoostVideo !== video && video.volume !== 1) video.volume = 1;
       // The upper slider reaches 4x at 150%, 8x at 200%, and 32x at 300%.
       const gain = volume <= 1.5 ? 16 ** (volume - 1) : 2 ** (2 * volume - 1);
       route.gain.gain.setTargetAtTime(gain, route.context.currentTime, 0.03);
@@ -496,12 +498,12 @@
     }
 
     function updateMonitoring() {
-      if (!disabled && (desiredSpeed !== 1 || desiredVolume !== 1 || desiredMono || hasSiteProfile) && !observer) {
+      if (!disabled && (desiredSpeed !== 1 || desiredVolume !== 1 || desiredMono || hasSiteProfile || scopedVolume) && !observer) {
         for (const name of mediaEvents) document.addEventListener(name, onMediaEvent, true);
         observer = new MutationObserver(onMutations);
         observer.observe(document.documentElement, { childList: true, subtree: true });
         videos();
-      } else if ((disabled || desiredSpeed === 1 && desiredVolume === 1 && !desiredMono && !hasSiteProfile) && observer) {
+      } else if ((disabled || desiredSpeed === 1 && desiredVolume === 1 && !desiredMono && !hasSiteProfile && !scopedVolume) && observer) {
         observer.disconnect();
         observer = null;
         lastActiveVideo = null;
@@ -657,11 +659,11 @@
       scopedVolume = Boolean(scope?.active);
       desiredVolume = normalizeVolume(scopedVolume ? scope.volume : settings?.siteVolumes?.[siteHost] ?? settings?.volume);
       desiredMono = settings?.mono === true;
-      volumeManaged = desiredVolume !== 1;
+      volumeManaged = scopedVolume || desiredVolume !== 1;
       speedStep = Number(settings?.speedStep) || 0.1;
       seekSeconds = Number(settings?.seekSeconds) || 10;
       updateMonitoring();
-      if (!disabled && (desiredSpeed !== 1 || desiredVolume !== 1 || desiredMono || hasSiteProfile)) await applyToMain();
+      if (!disabled && (desiredSpeed !== 1 || desiredVolume !== 1 || desiredMono || hasSiteProfile || scopedVolume)) await applyToMain();
     });
 
     api.storage.onChanged?.addListener((changes, area) => {

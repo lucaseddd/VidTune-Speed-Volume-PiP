@@ -2,31 +2,60 @@
   "manifest_version": 3,
   "name": "VidTune — Modular Controls",
   "short_name": "VidTune",
-  "version": "0.8.4",
+  "version": "0.81",
   "description": "Customizable video controls for speed, volume, mono audio, and Picture in Picture.",
   "action": {
-    "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "64": "icons/icon-64.png" },
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "64": "icons/icon-64.png"
+    },
     "default_title": "VidTune",
     "default_popup": "popup.html"
   },
-  "icons": { "48": "icons/icon-48.png", "96": "icons/icon-96.png", "128": "icons/icon-128.png" },
-  "options_ui": { "page": "options.html", "open_in_tab": true },
-  "permissions": ["activeTab", "scripting", "storage", "webNavigation"],
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "webNavigation"
+  ],
   "background": {
-    "scripts": ["src/background.js"],
+    "scripts": [
+      "src/background.js"
+    ],
     "service_worker": "src/background.js",
     "type": "module"
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js": ["src/content.js", "src/shortcuts.js"],
-    "all_frames": true,
-    "run_at": "document_start"
-  }],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content.js",
+        "src/shortcuts.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "vidtune@vidtune.local",
-      "data_collection_permissions": { "required": ["none"] }
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
     }
   }
 }

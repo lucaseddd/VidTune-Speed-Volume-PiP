@@ -29,7 +29,7 @@
     .then(([{ settings }, scope]) => {
       siteHost = scope?.siteHost || siteHost;
       useSettings(settings);
-      if (!disabled && scope?.active && scope.volume !== 1) api.runtime.sendMessage({ type: 'INIT_PREFERENCES' }).catch(() => {});
+      if (!disabled && scope?.active) api.runtime.sendMessage({ type: 'INIT_PREFERENCES' }).catch(() => {});
     }).catch(() => {});
   api.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings) useSettings(changes.settings.newValue);

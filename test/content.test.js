@@ -14,7 +14,7 @@ function fakeVideo({ playing = false, width = 640, height = 360 } = {}) {
   };
 }
 
-function fixture(initialSpeed, initialVideos, extraSettings = {}) {
+function fixture(initialSpeed, initialVideos, extraSettings = {}, globals = {}, scope = { active: false }) {
   const page = { videos: initialVideos, listeners: new Map(), observer: null, settings: { speed: initialSpeed, autoDetect: true, ...extraSettings } };
   let onMessage;
   class Observer {
@@ -33,13 +33,115 @@ function fixture(initialSpeed, initialVideos, extraSettings = {}) {
       async get() { return { settings: page.settings }; },
       async set({ settings }) { page.settings = settings; }
     } },
-    runtime: { sendMessage: async () => ({ active: false }), onMessage: { addListener(listener) { onMessage = listener; } } }
+    runtime: { sendMessage: async () => scope, onMessage: { addListener(listener) { onMessage = listener; } } }
   };
-  const context = { browser, document, MutationObserver: Observer, queueMicrotask, location: { hostname: 'example.com' } };
+  const context = { browser, document, MutationObserver: Observer, queueMicrotask, location: { hostname: 'example.com' }, ...globals };
   runInNewContext(source, context);
   page.send = (message) => new Promise((resolve) => { assert.equal(onMessage(message, {}, resolve), true); });
   return page;
 }
+
+test('tab-only volume survives player initialization and video replacement, including 100%', async () => {
+  for (const volume of [0.61, 1]) {
+    const video = fakeVideo();
+    video.volume = 0.3;
+    const scope = { active: true, volume };
+    const page = fixture(1, [video], { volume: 0.2 }, {}, scope);
+    await page.send({ type: 'GET_STATE' });
+    assert.equal(video.volume, volume);
+    assert.equal(page.observer.active, true);
+    for (const type of ['loadeddata', 'canplay', 'playing']) {
+      video.volume = 0.3;
+      page.listeners.get(type)({ type, target: video });
+      await page.send({ type: 'GET_STATE' });
+      assert.equal(video.volume, volume, `${type} must restore the tab's level`);
+    }
+    const next = fakeVideo();
+    video.isConnected = false;
+    next.volume = 0.3;
+    page.videos = [next];
+    page.observer.callback([{ addedNodes: [next], removedNodes: [video] }]);
+    await page.send({ type: 'GET_STATE' });
+    assert.equal(next.volume, volume);
+    assert.equal(page.settings.volume, 0.2);
+    assert.equal(scope.volume, volume);
+  }
+});
+
+function audioFixture(video, settings = {}) {
+  const nodes = [];
+  let sourceCount = 0;
+  class AudioContext {
+    state = 'running';
+    currentTime = 0;
+    destination = {};
+    async resume() {}
+    createGain() {
+      const node = {
+        connect() {}, disconnect() {},
+        gain: { value: 1, cancelScheduledValues() {}, setTargetAtTime(value) { this.value = value; } }
+      };
+      nodes.push(node);
+      return node;
+    }
+    createDynamicsCompressor() {
+      return { connect() {}, threshold: {}, knee: {}, ratio: {}, attack: {}, release: {} };
+    }
+    createMediaElementSource() { sourceCount++; return { connect() {} }; }
+  }
+  video.srcObject = {};
+  const page = fixture(1, [video], settings, { AudioContext, setTimeout, clearTimeout });
+  return { page, gain: () => nodes[0].gain.value, sourceCount: () => sourceCount };
+}
+
+test('player volume and mute keep the boost without delayed jumps on media events', async () => {
+  const video = fakeVideo({ playing: true });
+  const { page, gain, sourceCount } = audioFixture(video);
+  await page.send({ type: 'SET_VOLUME', volume: 2 });
+  assert.equal(gain(), 8);
+
+  for (const level of [0.25, 0, 0.6, 1]) {
+    video.volume = level;
+    for (const type of ['play', 'loadedmetadata', 'loadstart']) {
+      page.listeners.get(type)({ type, target: video });
+      await page.send({ type: 'GET_STATE' });
+      assert.equal(video.volume, level, `${type} must preserve the player volume`);
+      assert.equal(gain(), 8);
+    }
+    await page.send({ type: 'SET_SPEED', speed: 1.5 });
+    assert.equal(video.volume, level);
+  }
+  video.volume = 0.4;
+  video.muted = true;
+  page.listeners.get('play')({ type: 'play', target: video });
+  assert.equal((await page.send({ type: 'GET_STATE' })).volume, 0);
+  assert.equal(video.volume, 0.4);
+  assert.equal(video.muted, true);
+  video.muted = false;
+  assert.equal((await page.send({ type: 'GET_STATE' })).volume, 2);
+  assert.equal(gain(), 8);
+  assert.equal(sourceCount(), 1);
+});
+
+test('boost initializes native volume once and can be reset and enabled again', async () => {
+  const video = fakeVideo({ playing: true });
+  video.volume = 0.2;
+  const { page, gain, sourceCount } = audioFixture(video, { volume: 2 });
+  await page.send({ type: 'GET_STATE' });
+  assert.equal(video.volume, 1);
+  assert.equal(gain(), 8);
+  video.volume = 0.3;
+  await page.send({ type: 'PREVIEW_VOLUME', volume: 3 });
+  assert.equal(video.volume, 0.3);
+  assert.equal(gain(), 32);
+  await page.send({ type: 'SET_VOLUME', volume: 0.5 });
+  assert.equal(video.volume, 0.5);
+  assert.equal(gain(), 1);
+  await page.send({ type: 'SET_VOLUME', volume: 2 });
+  assert.equal(video.volume, 1);
+  assert.equal(gain(), 8);
+  assert.equal(sourceCount(), 1);
+});
 
 test('saved speed targets the playing video and follows a dynamic replacement', async () => {
   const largePaused = fakeVideo({ width: 1200, height: 700 });

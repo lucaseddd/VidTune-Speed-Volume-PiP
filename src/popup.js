@@ -15,6 +15,12 @@ const customizeButton = document.querySelector('#customize-tools');
 const choices = document.querySelector('#tool-choices');
 const status = document.querySelector('#status');
 const smartToggle = document.querySelector('#smart-organize');
+const versionLabel = document.querySelector('#version');
+const shortcutLegend = document.querySelector('.footnote');
+const footer = document.querySelector('.popup-footer');
+const volumePresets = document.querySelector('#volume-presets');
+const volumePresetsSlot = document.querySelector('#volume-presets-slot');
+versionLabel.textContent = `v${browserApi().runtime.getManifest().version}`;
 let settings;
 let currentTab;
 let videoState = { speed: 1, volume: 1, mono: false, hasVideo: false };
@@ -29,7 +35,11 @@ function setStatus(message, kind = '') {
 }
 
 function renderModules() {
+  // Move these shared elements out before replacing the previous tool layout.
+  footer.append(shortcutLegend);
+  volumePresetsSlot.append(volumePresets);
   const count = settings.moduleCount;
+  document.documentElement.dataset.toolCount = String(count);
   countPicker.value = String(count);
   smartToggle.checked = settings.smartOrganize;
   list.className = settings.smartOrganize ? `module-list smart smart-${({ 2: 'two', 5: 'five', 10: 'ten' })[count]}` : 'module-list';
@@ -68,6 +78,7 @@ function renderModules() {
     return row;
   }));
   if (settings.smartOrganize) organizeTools();
+  updateCompactVisibility();
   choices.replaceChildren(...settings.moduleLayouts[count].map((name, index) => {
     const label = document.createElement('label');
     label.textContent = `Tool ${index + 1}`;
@@ -88,6 +99,12 @@ function renderModules() {
   renderVideoState(videoState);
 }
 
+function updateCompactVisibility() {
+  volumePresets.hidden = !choices.hidden || !settings.moduleLayouts[settings.moduleCount].includes('volume');
+  volumePresetsSlot.hidden = volumePresetsSlot.children.length === 0 || volumePresets.hidden;
+  footer.hidden = footer.children.length === 0 || !choices.hidden;
+}
+
 function organizeTools() {
   const rows = new Map([...list.children].map((row) => [row.dataset.module, row]));
   const group = (className, label) => {
@@ -98,6 +115,10 @@ function organizeTools() {
   };
   const speed = rows.get('speed');
   if (speed) {
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.append(speed.querySelector('.module-title'), shortcutLegend);
+    speed.prepend(heading);
     const section = group('speed-workspace', 'Playback speed');
     section.append(speed, document.querySelector('#smart-speed-extra').content.cloneNode(true));
     for (const value of settings.presets) {
@@ -122,6 +143,10 @@ function organizeTools() {
   } else if (quick.children.length) list.append(quick);
   const volume = rows.get('volume');
   if (volume) {
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.append(volume.querySelector('.module-title'), volumePresets);
+    volume.prepend(heading);
     const section = group('audio-workspace', 'Volume and audio');
     section.append(volume, document.querySelector('#smart-volume-extra').content.cloneNode(true));
     const switches = group('audio-switches', 'Audio options');
@@ -156,7 +181,10 @@ function renderVideoState(state) {
   if (smartManual && document.activeElement !== smartManual) smartManual.value = String(speed);
   for (const input of [manual, smartManual]) if (input) input.step = String(settings.speedStep);
   for (const button of list.querySelectorAll('[data-speed]')) button.setAttribute('aria-pressed', String(Number(button.dataset.speed) === speed));
-  for (const button of list.querySelectorAll('[data-volume]')) button.setAttribute('aria-pressed', String(Number(button.dataset.volume) === state.volume));
+  for (const button of volumePresets.querySelectorAll('[data-volume]')) {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.volume) === state.volume));
+    button.disabled = Boolean(state.disabled);
+  }
   const slider = document.querySelector('#volume-slider');
   if (slider && document.activeElement !== slider) slider.value = String(volumeToPosition(state.volume));
   const volumeValue = document.querySelector('#volume-value');
@@ -252,8 +280,6 @@ list.addEventListener('input', (event) => {
 list.addEventListener('click', (event) => {
   const speedPreset = event.target.closest('[data-speed]');
   if (speedPreset) { send({ type: 'SET_SPEED', speed: Number(speedPreset.dataset.speed) }); return; }
-  const volumePreset = event.target.closest('[data-volume]');
-  if (volumePreset) { sendVolume(Number(volumePreset.dataset.volume), true); return; }
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (!action) return;
   if (action === 'CUSTOM_SPEED' || action === 'SMART_SPEED') {
@@ -267,12 +293,18 @@ list.addEventListener('click', (event) => {
   } else send({ type: action });
 });
 
+volumePresets.addEventListener('click', (event) => {
+  const preset = event.target.closest('[data-volume]');
+  if (preset) sendVolume(Number(preset.dataset.volume), true);
+});
+
 countPicker.addEventListener('change', () => saveLayout({ moduleCount: Number(countPicker.value) }));
 smartToggle.addEventListener('change', () => saveLayout({ smartOrganize: smartToggle.checked }));
 customizeButton.addEventListener('click', () => {
   choices.hidden = !choices.hidden;
   list.hidden = !choices.hidden;
   customizeButton.setAttribute('aria-expanded', String(!choices.hidden));
+  updateCompactVisibility();
 });
 document.querySelector('#open-settings').addEventListener('click', () => browserApi().runtime.openOptionsPage());
 

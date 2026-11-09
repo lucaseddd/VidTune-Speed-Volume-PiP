@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { Builder } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { installTestAddons } from './firefox-addons.js';
+import { checkPlayerVolume } from './player-volume-test.js';
 
 process.env.SE_CACHE_PATH = resolve('work/selenium-cache');
 process.env.SE_AVOID_STATS = 'true';
@@ -89,7 +90,7 @@ try {
     5000, 'Extension tab did not locate the video tab');
   await driver.executeScript('const select=document.getElementById("tool-count");select.value="10";select.dispatchEvent(new Event("change",{bubbles:true}))');
   await driver.wait(async () => await driver.executeScript('return document.querySelectorAll(".module-row").length === 10'), 5000);
-  await driver.executeScript('document.getElementById("smart-organize").click()');
+  await driver.executeScript('const toggle=document.getElementById("smart-organize");if(!toggle.checked)toggle.click()');
   await driver.wait(async () => await driver.executeScript('return !!document.querySelector(".speed-workspace")'), 5000);
   await driver.findElement({ id: 'volume-slider' }).sendKeys('d');
   await driver.wait(async () => (await driver.findElement({ id: 'speed-value' }).getText()) === '1.1×', 5000);
@@ -170,6 +171,7 @@ try {
   await setPopupVolume(200, '300%');
   await driver.wait(async () => (await control({ type: 'GET_STATE' })).volume === 3,
     5000, 'Firefox did not activate 300% audio boost');
+  await checkPlayerVolume(driver, control, pageHandle, extensionHandle, '#main');
   await setPopupVolume(100, '100%');
   await driver.switchTo().window(pageHandle);
   await waitForVolume('main', 1);

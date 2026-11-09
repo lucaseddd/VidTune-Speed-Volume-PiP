@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cp, mkdir, readFile, readdir, rm, mkdtemp } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, mkdtemp, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -13,9 +13,17 @@ async function zipContents(folder, archive) {
   await rm(destination, { force: true });
   if (process.platform === 'win32') {
     const entries = await readdir(source);
-    execFileSync('tar.exe', ['-a', '-c', '-f', destination, '-C', source, ...entries], { stdio: 'inherit' });
+    // Windows tar selects its format from the suffix and does not recognize XPI.
+    // Create a ZIP first, then retain Firefox's required .xpi filename.
+    const zipPath = destination.endsWith('.xpi') ? `${destination}.zip` : destination;
+    if (zipPath !== destination) await rm(zipPath, { force: true });
+    execFileSync('tar.exe', ['-a', '-c', '-f', zipPath, '-C', source, ...entries], { stdio: 'inherit' });
+    if (zipPath !== destination) await rename(zipPath, destination);
   } else {
     execFileSync('zip', ['-qr', destination, '.'], { cwd: source, stdio: 'inherit' });
+  }
+  if (!(await readFile(destination)).subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
+    throw new Error(`Package is not a ZIP archive: ${archive}`);
   }
 }
 

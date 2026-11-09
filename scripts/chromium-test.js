@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { Builder } from 'selenium-webdriver';
 import edge from 'selenium-webdriver/edge.js';
 import chrome from 'selenium-webdriver/chrome.js';
+import { checkPlayerVolume } from './player-volume-test.js';
 
 process.env.SE_CACHE_PATH = resolve('work/selenium-cache');
 process.env.SE_AVOID_STATS = 'true';
@@ -103,7 +104,7 @@ try {
   const swap = await driver.executeScript(`const select=document.querySelector('.module-row[data-index="0"] .module-select');
     select.value='pip';select.dispatchEvent(new Event('change',{bubbles:true}));return true;`);
   if (!swap) throw new Error('Module selection failed');
-  await driver.wait(async () => await driver.executeScript('const rows=document.querySelectorAll(".module-row");return rows[0]?.dataset.module === "pip" && rows[3]?.dataset.module === "speed"'), 5000);
+  await driver.wait(async () => await driver.executeScript('return document.querySelector(\'.module-row[data-index="0"]\')?.dataset.module === "pip" && document.querySelector(\'.module-row[data-index="3"]\')?.dataset.module === "speed"'), 5000);
   await driver.executeScript(`const select=document.querySelector('.module-row[data-index="0"] .module-select');
     select.value='speed';select.dispatchEvent(new Event('change',{bubbles:true}));`);
   await driver.wait(async () => await driver.executeScript('return document.querySelector(".module-row")?.dataset.module === "speed"'), 5000);
@@ -184,6 +185,7 @@ try {
   if ((await control({ type: 'SET_VOLUME', volume: 0.25 })).volume !== 0.25) throw new Error('Chromium native volume failed');
   const boost = await control({ type: 'SET_VOLUME', volume: 3 });
   if (boost.volume !== 3 || boost.boostUnavailable) throw new Error('Chromium boost failed');
+  await checkPlayerVolume(driver, control, page, popup, '#video');
   await driver.navigate().refresh();
   await driver.wait(async () => (await driver.findElement({ id: 'volume-value' }).getText()) === '300%', 5000);
   await driver.executeScript('document.getElementById("tab-volume-only").click()');

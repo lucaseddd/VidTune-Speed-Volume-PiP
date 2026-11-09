@@ -23,7 +23,7 @@
 
 For the latest downloadable files, open the release directly:
 
-- [VidTune 0.8.4 — latest release](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.4)
+- [VidTune 0.81 — latest release](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.81)
 - [VidTune 0.8.3](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.3)
 - [VidTune 0.8.2](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.2)
 
@@ -33,10 +33,24 @@ The latest release includes a **Firefox XPI installer** and a **source ZIP**. In
 
 - **Video speed:** Set playback from 0.1× to 16× with presets, a custom value, or the **A** and **D** keys. Press **Q** to return to 1×.
 - **Volume boost:** Raise video volume up to 300%, mute it, or use a separate level for each tab.
+- **Player volume:** After enabling boost, the player's volume and mute controls scale the amplified audio. Playback and speed changes preserve the player level.
 - **Mono audio:** Blend left and right audio channels and play the same mix through both sides.
 - **Picture-in-Picture:** Move a video to a floating window when the browser and player support it.
 - **Site preferences:** Remember a speed or volume level for a website.
 - **Custom layouts:** Choose 2, 5, or 10 controls. Smart Organize groups related tools for easier scanning.
+- **Adaptive controls:** The 320-pixel-wide panel grows and shrinks to fit the selected tools. The installed version sits beside VidTune, keyboard hints share the playback speed heading, and compact volume presets share the volume heading. Tab-only volume follows new videos within that tab.
+
+## Changelog
+
+### 0.81
+
+- Reorganized the popup: the version appears beside the VidTune name, speed shortcuts share the Playback Speed heading, and compact volume presets share the Volume Boost heading.
+- Made the popup height adapt to the selected tools so controls remain visible without a scrollbar or clipped content.
+- Kept tab-only volume settings active when navigating to another video in the same tab.
+- Fixed volume boost so native player volume and mute controls continue working without delayed jumps or loss of amplification.
+- Improved Windows packaging so Firefox XPI files are created as valid ZIP archives.
+- Added regression coverage for player volume behavior, tab-scoped settings, and compact popup layouts.
+- Removed the Pin control while its always-on-top behavior is deferred.
 
 ## Preview
 
