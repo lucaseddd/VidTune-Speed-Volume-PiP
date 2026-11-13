@@ -3,6 +3,14 @@
   if (globalThis.__vidTuneBootstrap) return;
   globalThis.__vidTuneBootstrap = true;
   let cachedTree;
+  function visibleArea(video) {
+    const rect = video.getBoundingClientRect();
+    const width = typeof innerWidth === 'number' && Number.isFinite(rect.left)
+      ? Math.max(0, Math.min(rect.right, innerWidth) - Math.max(0, rect.left)) : rect.width;
+    const height = typeof innerHeight === 'number' && Number.isFinite(rect.top)
+      ? Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(0, rect.top)) : rect.height;
+    return Math.max(0, width) * Math.max(0, height);
+  }
   function mediaTree() {
     if (cachedTree) return cachedTree;
     const roots = [document];
@@ -24,16 +32,10 @@
   bootstrapApi.runtime.onMessage.addListener((message, sender, respond) => {
     if (message?.type === 'PROBE_VIDEOS') {
       const videos = mediaTree().videos;
-      const visible = videos.filter((video) => {
-        const rect = video.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-      });
+      const visible = videos.filter((video) => visibleArea(video) > 0);
       const candidates = visible.length ? visible : videos;
       const playing = candidates.filter((video) => !video.paused && !video.ended);
-      const area = Math.max(0, ...(playing.length ? playing : candidates).map((video) => {
-        const rect = video.getBoundingClientRect();
-        return Math.max(0, rect.width) * Math.max(0, rect.height);
-      }));
+      const area = Math.max(0, ...(playing.length ? playing : candidates).map(visibleArea));
       respond({ count: videos.length, playing: playing.length > 0, area });
       return;
     }
@@ -64,7 +66,7 @@
     const failedSources = new WeakMap();
     const rateCorrections = new WeakMap();
     const shadowRoots = new Set();
-    const mediaEvents = ['play', 'playing', 'loadedmetadata', 'loadeddata', 'canplay', 'loadstart', 'ratechange'];
+    const mediaEvents = ['play', 'playing', 'pause', 'ended', 'seeking', 'seeked', 'loadedmetadata', 'loadeddata', 'canplay', 'loadstart', 'ratechange'];
     let hasSiteProfile = false;
     let disabled = false;
     let basicMode = false;
@@ -73,6 +75,7 @@
     let speedStep = 0.1;
     let seekSeconds = 10;
     let lastActiveVideo = null;
+    let lastAppliedVideo = null;
     let observer = null;
     let scanQueued = false;
     let indicator = null;
@@ -123,13 +126,9 @@
       let winner = null;
       let best = -1;
       const all = videos();
-      const visible = all.filter((video) => {
-        const rect = video.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-      });
+      const visible = all.filter((video) => visibleArea(video) > 0);
       for (const video of visible.length ? visible : all) {
-        const rect = video.getBoundingClientRect();
-        const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+        const area = visibleArea(video);
         const playing = !video.paused && !video.ended;
         const score = (playing ? 1e9 : 0) + (video === lastActiveVideo ? 1e6 : 0) + area;
         if (score > best) { best = score; winner = video; }
@@ -151,8 +150,24 @@
       } catch { return false; }
     }
 
+    async function resumeAudio(context) {
+      if (context.state === 'running') return true;
+      let timeout;
+      try {
+        await Promise.race([
+          context.resume(),
+          new Promise((resolve) => { timeout = setTimeout(resolve, 500); })
+        ]);
+        return context.state === 'running';
+      } catch { return false; }
+      finally { clearTimeout(timeout); }
+    }
+
     async function audioRoute(video) {
-      if (audioRoutes.has(video)) return audioRoutes.get(video);
+      if (audioRoutes.has(video)) {
+        const route = audioRoutes.get(video);
+        return await resumeAudio(route.context) ? route : null;
+      }
       if (pendingRoutes.has(video)) return pendingRoutes.get(video);
       const task = (async () => {
         if (!canRouteAudio(video) && !await prepareAudioSource(video)) return null;
@@ -161,14 +176,7 @@
         let context;
         try {
           context = new AudioContextClass();
-          let timeout;
-          try {
-            await Promise.race([
-              context.resume(),
-              new Promise((resolve) => { timeout = setTimeout(resolve, 500); })
-            ]);
-          } finally { clearTimeout(timeout); }
-          if (context.state !== 'running') throw new Error('Audio context is suspended');
+          if (!await resumeAudio(context)) throw new Error('Audio context is suspended');
           const gain = context.createGain();
           const compressor = context.createDynamicsCompressor();
           // Limit only peaks near full scale, leaving the requested gain audible.
@@ -418,6 +426,7 @@
     async function applyToMain() {
       if (disabled) return;
       const video = mainVideo();
+      lastAppliedVideo = video;
       if (activeBoostVideo && activeBoostVideo !== video) {
         routeNative(activeBoostVideo, 1);
         activeBoostVideo = null;
@@ -439,6 +448,7 @@
         }
         const requestedVolume = desiredVolume;
         const route = await audioRoute(video);
+        if (disabled) return;
         if (requestedVolume !== desiredVolume || video !== mainVideo()) return applyToMain();
         if (route) {
           routeMono(route, desiredMono);
@@ -453,7 +463,13 @@
           boostError = null;
           monoError = false;
         } else {
-          routeNative(video, 1);
+          // A temporarily suspended graph must retain the player's volume/mute.
+          // It cannot be detached from its media element and will resume in place.
+          if (!audioRoutes.has(video)) {
+            routeNative(video, 1);
+            activeBoostVideo = null;
+            activeMonoVideo = null;
+          }
           boostError = desiredVolume > 1 ? 'Boost unavailable for this video' : null;
           monoError = desiredMono;
         }
@@ -487,6 +503,7 @@
     }
 
     function onMutations(mutations) {
+      cachedTree = null;
       if (scanQueued) return;
       const hasVideoChange = mutations.some(({ addedNodes, removedNodes }) =>
         [...addedNodes, ...removedNodes].some((node) =>
@@ -502,19 +519,38 @@
     function updateMonitoring() {
       if (!disabled && (desiredSpeed !== 1 || desiredVolume !== 1 || desiredMono || hasSiteProfile || scopedVolume) && !observer) {
         for (const name of mediaEvents) document.addEventListener(name, onMediaEvent, true);
+        document.addEventListener('pointerdown', recoverAudio, true);
+        document.addEventListener('keydown', recoverAudio, true);
+        document.addEventListener('scroll', onViewportChange, true);
         observer = new MutationObserver(onMutations);
-        observer.observe(document.documentElement, { childList: true, subtree: true });
+        observer.observe(document, { childList: true, subtree: true });
         videos();
       } else if ((disabled || desiredSpeed === 1 && desiredVolume === 1 && !desiredMono && !hasSiteProfile && !scopedVolume) && observer) {
         observer.disconnect();
         observer = null;
         lastActiveVideo = null;
         for (const name of mediaEvents) document.removeEventListener(name, onMediaEvent, true);
+        document.removeEventListener('pointerdown', recoverAudio, true);
+        document.removeEventListener('keydown', recoverAudio, true);
+        document.removeEventListener('scroll', onViewportChange, true);
         for (const root of shadowRoots) {
           for (const name of mediaEvents) root.removeEventListener(name, onMediaEvent, true);
         }
         shadowRoots.clear();
       }
+    }
+
+    function recoverAudio() {
+      if (desiredVolume > 1 || desiredMono) applyToMain().catch(() => {});
+    }
+
+    function onViewportChange() {
+      if (scanQueued) return;
+      scanQueued = true;
+      queueMicrotask(() => {
+        scanQueued = false;
+        if (mainVideo() !== lastAppliedVideo) applyToMain().catch(() => {});
+      });
     }
 
     function state() {
@@ -524,7 +560,7 @@
       return {
         count: videos().length,
         speed: video ? normalize(video.playbackRate) : desiredSpeed,
-        volume: video ? normalizeVolume(video.muted ? 0 : activeBoostVideo === video || (desiredVolume > 1 && video.paused && !boostError) ? desiredVolume : video.volume) : desiredVolume,
+        volume: video ? normalizeVolume(video.muted ? 0 : (activeBoostVideo === video && !boostError) || (desiredVolume > 1 && video.paused && !boostError) ? desiredVolume : video.volume) : desiredVolume,
         boostUnavailable: Boolean(video && desiredVolume > 1 && boostError),
         mono: desiredMono,
         monoUnavailable: Boolean(video && desiredMono && monoError),
@@ -614,7 +650,6 @@
       updateMonitoring();
       const video = mainVideo();
       if (video && desiredVolume > 0 && video.muted) video.muted = false;
-      await applyToMain();
       if (persist) {
         if (scopedVolume) await api.runtime.sendMessage({ type: 'SAVE_SCOPED_VOLUME', volume: desiredVolume });
         else {
@@ -626,6 +661,7 @@
           await api.storage.local.set({ settings: updated });
         }
       }
+      await applyToMain();
       return state();
     }
 
@@ -654,9 +690,9 @@
       return state();
     }
 
-    const ready = Promise.all([api.storage.local.get('settings'),
-      api.runtime.sendMessage({ type: 'GET_VOLUME_SCOPE' }).catch(() => null)])
-      .then(async ([{ settings }, scope]) => {
+    const ready = api.runtime.sendMessage({ type: 'GET_VOLUME_SCOPE' }).catch(() => null)
+      .then(async (scope) => {
+      const { settings } = await api.storage.local.get('settings');
       siteHost = scope?.siteHost || siteHost;
       disabled = settings?.disabledSites?.includes(siteHost) === true;
       basicMode = settings?.moduleCount === 2;

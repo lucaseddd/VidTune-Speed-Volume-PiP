@@ -1,14 +1,14 @@
 # VidTune Privacy Policy
 
-Last updated: 26 October 2026
+Last updated: 13 November 2026
 
 VidTune is a browser extension that controls video speed, audio level, mono audio, Picture in Picture, and optional seeking.
 
 ## Information and storage
 
-VidTune does not collect, sell, or transmit browsing history, video titles, media content, or account information to the developer. Settings are stored locally by the browser. Independent volume values for open tabs use temporary browser session storage and are removed when a tab closes.
+VidTune does not collect, sell, or transmit browsing history, video titles, media content, or account information to the developer. Settings are stored locally by the browser. The global volume resets to 100% for each browser session. For tabs explicitly marked "This tab only", the extension saves the page URL, tab position, volume and speed locally so it can recognize a restored tab after a browser restart. Unchecking the option or closing an individual tab deletes its saved entry; closing the browser window preserves it for restoration. Identical pages in indistinguishable positions across windows are not automatically matched.
 
-The extension reads page and frame information when needed to find and control video players, apply saved site preferences, and route commands to the correct frame. It does not store or transmit visited page URLs. A small content script listens for the configured keyboard shortcuts on pages where it can run.
+The extension reads page and frame information when needed to find and control video players, apply saved site preferences, and route commands to the correct frame. Only URLs of explicitly marked tabs are stored locally for restoration; they are never transmitted to the developer. A small content script listens for the configured keyboard shortcuts on pages where it can run.
 
 ## Audio boost compatibility
 
@@ -23,5 +23,5 @@ When volume boost or mono audio is requested for cross-origin media, VidTune may
 
 ## Changes and contact
 
-This policy may be updated when VidTune's behavior changes. The current version is published in the [VidTune GitHub repository](https://github.com/lucaseddd/VidTune/blob/feature/modular-popup/PRIVACY.md). Contact the developer through the repository's Issues page with privacy questions.
+This policy may be updated when VidTune's behavior changes. The current version is published in the [VidTune GitHub repository](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/blob/main/PRIVACY.md). Contact the developer through the repository's Issues page with privacy questions.
 

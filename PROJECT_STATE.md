@@ -1,5 +1,7 @@
 # Project state
 
+- 2026-11-13 / v0.8.63: global volume resets at a new browser session, while explicitly marked tab volume/speed can be restored by URL and tab position. No added permissions. Suspended audio graphs resume on media/seek events and gestures; feed selection uses viewport intersection. Slider previews use the latest value and cannot override a preset; saving an older Options page preserves newer global volume/layout. A focused `scripts/regression-test.js` suite covers Firefox and Edge, including a full Edge shutdown/relaunch. The older broad Chromium UI suite still assumes the obsolete 360px/10-tool interface. Live Facebook was not used for this patch; the user subsequently reported it working normally.
+
 - Firefox window policy: reuse the existing manual test session in `work/manual-session.json`; keep only one visible VidTune test window with uBlock. Close obsolete test windows when replacing a session. Run automated Firefox checks headlessly. Do not create another visible window for an update or disturb the prepared player unnecessarily.
 
 - Current version: 0.8.4. This release changes the fresh-install default to 5 tools with Smart Organize enabled while preserving explicit saved preferences. The 0.8.4 Firefox Add-ons update was submitted for public listing review on 26 October 2026; Mozilla confirmed the submission and said publication may take 24 hours or longer if selected for manual review. Mozilla listing: https://addons.mozilla.org/pt-BR/firefox/addon/vidtune/ .

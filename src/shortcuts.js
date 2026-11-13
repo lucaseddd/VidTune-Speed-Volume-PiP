@@ -14,18 +14,19 @@
     };
     seekEnabled = settings?.seekEnabled === true;
     disabled = settings?.disabledSites?.includes(siteHost) === true;
-    if (disabled) return;
+    if (disabled) { preferenceKey = null; return; }
     const speed = settings?.siteSpeeds?.[siteHost];
     const volume = settings?.siteVolumes?.[siteHost] ?? settings?.volume ?? 1;
     const nextKey = speed != null || volume !== 1 || settings?.mono === true
       ? `${speed ?? ''}:${volume}:${settings?.mono === true}` : null;
+    if (!nextKey) preferenceKey = null;
     if (nextKey && nextKey !== preferenceKey) {
       preferenceKey = nextKey;
       api.runtime.sendMessage({ type: 'INIT_PREFERENCES' }).catch(() => {});
     }
   }
 
-  Promise.all([api.storage.local.get('settings'), api.runtime.sendMessage({ type: 'GET_VOLUME_SCOPE' })])
+  Promise.all([api.storage.local.get('settings'), api.runtime.sendMessage({ type: 'GET_VOLUME_SCOPE' }).catch(() => null)])
     .then(([{ settings }, scope]) => {
       siteHost = scope?.siteHost || siteHost;
       useSettings(settings);

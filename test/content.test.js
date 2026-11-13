@@ -70,12 +70,14 @@ test('tab-only volume survives player initialization and video replacement, incl
 
 function audioFixture(video, settings = {}) {
   const nodes = [];
+  const contexts = [];
   let sourceCount = 0;
   class AudioContext {
+    constructor() { contexts.push(this); }
     state = 'running';
     currentTime = 0;
     destination = {};
-    async resume() {}
+    async resume() { this.state = 'running'; }
     createGain() {
       const node = {
         connect() {}, disconnect() {},
@@ -91,8 +93,79 @@ function audioFixture(video, settings = {}) {
   }
   video.srcObject = {};
   const page = fixture(1, [video], settings, { AudioContext, setTimeout, clearTimeout });
-  return { page, gain: () => nodes[0].gain.value, sourceCount: () => sourceCount };
+  return { page, contexts, gain: () => nodes[0].gain.value, sourceCount: () => sourceCount };
 }
+
+test('seeking resumes the existing audio graph without losing boost or player volume', async () => {
+  const video = fakeVideo({ playing: true });
+  const { page, contexts, gain, sourceCount } = audioFixture(video, { volume: 2 });
+  await page.send({ type: 'GET_STATE' });
+  video.volume = 0.4;
+  for (const type of ['seeking', 'seeked', 'playing']) {
+    contexts[0].state = 'suspended';
+    page.listeners.get(type)?.({ type, target: video });
+    await new Promise(setImmediate);
+    assert.equal(contexts[0].state, 'running', type);
+    assert.equal(gain(), 8);
+    assert.equal(video.volume, 0.4);
+    assert.equal((await page.send({ type: 'GET_STATE' })).boostUnavailable, false);
+  }
+  assert.equal(sourceCount(), 1);
+});
+
+test('blocked audio resume reports failure and retries on a page gesture', async () => {
+  const video = fakeVideo({ playing: true });
+  const { page, contexts, gain, sourceCount } = audioFixture(video, { volume: 2 });
+  await page.send({ type: 'GET_STATE' });
+  contexts[0].state = 'suspended';
+  video.volume = 0.4;
+  contexts[0].resume = async () => { throw new Error('gesture required'); };
+  page.listeners.get('playing')({ type: 'playing', target: video });
+  await new Promise(setImmediate);
+  assert.equal((await page.send({ type: 'GET_STATE' })).boostUnavailable, true);
+  contexts[0].resume = async () => { contexts[0].state = 'running'; };
+  page.listeners.get('pointerdown')?.({});
+  await new Promise(setImmediate);
+  assert.equal((await page.send({ type: 'GET_STATE' })).boostUnavailable, false);
+  assert.equal(gain(), 8);
+  assert.equal(sourceCount(), 1);
+  assert.equal(video.volume, 0.4);
+});
+
+test('feed controls follow the viewport instead of an offscreen playing video', async () => {
+  const old = fakeVideo({ playing: true });
+  const current = fakeVideo();
+  old.getBoundingClientRect = () => ({ left: 0, right: 640, top: -500, bottom: -140, width: 640, height: 360 });
+  current.getBoundingClientRect = () => ({ left: 0, right: 640, top: 0, bottom: 360, width: 640, height: 360 });
+  const page = fixture(1.5, [old, current], {}, { innerWidth: 1000, innerHeight: 800 });
+  await page.send({ type: 'GET_STATE' });
+  assert.equal(current.playbackRate, 1.5);
+  assert.equal(old.playbackRate, 1);
+  const next = fakeVideo({ playing: true });
+  next.getBoundingClientRect = current.getBoundingClientRect;
+  current.getBoundingClientRect = old.getBoundingClientRect;
+  page.videos.push(next);
+  page.listeners.get('scroll')?.({});
+  await new Promise(setImmediate);
+  assert.equal(next.playbackRate, 1.5);
+});
+
+test('boost follows a replaced playing video and restores the old graph to native gain', async () => {
+  const old = fakeVideo({ playing: true });
+  const { page, gain, sourceCount } = audioFixture(old, { volume: 2 });
+  await page.send({ type: 'GET_STATE' });
+  const next = fakeVideo({ playing: true });
+  next.srcObject = {};
+  old.isConnected = false;
+  page.videos = [next];
+  page.observer.callback([{ addedNodes: [next], removedNodes: [old] }]);
+  await new Promise(setImmediate);
+  const state = await page.send({ type: 'GET_STATE' });
+  assert.equal(state.volume, 2);
+  assert.equal(state.boostUnavailable, false);
+  assert.equal(gain(), 1);
+  assert.equal(sourceCount(), 2);
+});
 
 test('tab-only speed restores on navigation and never changes global or site speeds', async () => {
   const scope = { active: true, volume: 0.61, speed: 1.75 };

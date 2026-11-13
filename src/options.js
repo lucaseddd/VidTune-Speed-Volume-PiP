@@ -166,7 +166,7 @@ form.addEventListener('submit', async (event) => {
       else disabledSites.delete(host);
     }
     const next = {
-      ...settings, autoDetect: fields.autoDetect.checked, speedStep, presets: presetValues(), shortcuts: chosenKeys(),
+      ...await loadSettings(), autoDetect: fields.autoDetect.checked, speedStep, presets: presetValues(), shortcuts: chosenKeys(),
       seekEnabled: fields.seekEnabled.checked, seekSeconds, siteSpeeds, siteVolumes,
       disabledSites: [...disabledSites]
     };
