@@ -2,7 +2,7 @@
 
 **Your video. Your pace.** Adjust speed from **0.1× to 16×**, boost quiet audio up to **300%**, and pop videos out with Picture-in-Picture — from one compact panel.
 
-[Get it for Firefox](https://addons.mozilla.org/firefox/addon/vidtune/) · [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/iocecgnikgeoainkjndpejfgblgnkpmo) · [Download 0.8.62](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.62)
+[Get it for Firefox](https://addons.mozilla.org/firefox/addon/vidtune/) · [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/iocecgnikgeoainkjndpejfgblgnkpmo) · [Download 0.8.63](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.63)
 
 ![VidTune: speed, volume and Picture-in-Picture](presentation/01-video-control.png)
 
@@ -21,7 +21,7 @@
 
 ## Install
 
-Use the browser store for signed installation and automatic updates. The [release](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.62) also includes the source archive, a Chromium build ZIP and a Firefox build. The release notes identify the Firefox signing status.
+Use the browser store for signed installation and automatic updates. The [release](https://github.com/lucaseddd/VidTune-Speed-Volume-PiP/releases/tag/v0.8.63) also includes the source archive, a Chromium build ZIP and a Firefox build. The release notes identify the Firefox signing status.
 
 Some protected videos and restricted pages limit playback controls. Audio boost depends on the player allowing audio processing.
 
