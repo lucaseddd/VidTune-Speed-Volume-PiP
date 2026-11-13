@@ -28,6 +28,7 @@ let currentTab;
 let videoState = { speed: 1, volume: 1, mono: false, hasVideo: false };
 let scopeActive = false;
 let volumeTimer;
+let previewVolume;
 let volumeRequests = Promise.resolve();
 let layoutWrites = Promise.resolve();
 let editingShortcut = null;
@@ -277,6 +278,10 @@ async function send(message) {
 
 function sendVolume(volume, persist) {
   if (!currentTab?.id) return;
+  if (persist) {
+    clearTimeout(volumeTimer);
+    volumeTimer = null;
+  }
   volumeRequests = volumeRequests.catch(() => {}).then(() => send({ type: persist ? 'SET_VOLUME' : 'PREVIEW_VOLUME', volume }));
 }
 
@@ -331,10 +336,11 @@ list.addEventListener('change', async (event) => {
 list.addEventListener('input', (event) => {
   if (event.target.id !== 'volume-slider') return;
   const volume = positionToVolume(event.target.value);
+  previewVolume = volume;
   document.querySelector('#volume-value').textContent = formatVolume(volume);
   if (!volumeTimer) volumeTimer = setTimeout(() => {
     volumeTimer = null;
-    sendVolume(volume, false);
+    sendVolume(previewVolume, false);
   }, 50);
 });
 

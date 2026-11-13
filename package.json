@@ -1,7 +1,7 @@
 {
   "name": "vidtune",
   "private": true,
-  "version": "0.8.62",
+  "version": "0.8.63",
   "type": "module",
   "description": "Lightweight video controls for the web",
   "scripts": {
@@ -16,7 +16,9 @@
     "test:firefox": "node scripts/firefox-test.js",
     "test:chromium": "node scripts/chromium-test.js",
     "test:chrome": "node scripts/chromium-test.js --chrome",
-    "test:edge": "node scripts/chromium-test.js"
+    "test:edge": "node scripts/chromium-test.js",
+    "test:regression": "node scripts/regression-test.js",
+    "test:regression:firefox": "node scripts/regression-test.js --firefox"
   },
   "engines": {
     "node": ">=20"
